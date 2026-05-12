@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import { supabase } from '@/lib/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -12,7 +13,6 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card';
-import { useAuth } from '@/lib/auth-context';
 import {
   AlertCircle,
   CheckCircle,
@@ -20,16 +20,18 @@ import {
   Mail,
   ArrowLeft,
   LogIn,
+  Loader2,
 } from 'lucide-react';
 
 export default function LoginPage() {
   const router = useRouter();
-  const { login, isLoading } = useAuth();
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const getFriendlyError = (message: string) => {
     const lowerMessage = message.toLowerCase();
@@ -90,8 +92,23 @@ export default function LoginPage() {
       return;
     }
 
+    setIsSubmitting(true);
+
     try {
-      await login(email.trim().toLowerCase(), password);
+      const cleanEmail = email.trim().toLowerCase();
+
+      const { data, error: loginError } = await supabase.auth.signInWithPassword({
+        email: cleanEmail,
+        password,
+      });
+
+      if (loginError) {
+        throw loginError;
+      }
+
+      if (!data.session || !data.user) {
+        throw new Error('No se pudo iniciar sesión. Intenta nuevamente.');
+      }
 
       setSuccess(true);
 
@@ -101,6 +118,36 @@ export default function LoginPage() {
       }, 800);
     } catch (err: any) {
       setError(getFriendlyError(err?.message || 'Error al iniciar sesión'));
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleResendConfirmation = async () => {
+    setError('');
+
+    if (!email.trim() || !email.includes('@')) {
+      setError('Ingresa tu correo electrónico para reenviar la confirmación.');
+      return;
+    }
+
+    setIsSubmitting(true);
+
+    try {
+      const { error: resendError } = await supabase.auth.resend({
+        type: 'signup',
+        email: email.trim().toLowerCase(),
+      });
+
+      if (resendError) {
+        throw resendError;
+      }
+
+      setError('');
+      setSuccess(true);
+    } catch (err: any) {
+      setError(err?.message || 'No se pudo reenviar el correo de confirmación.');
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -135,7 +182,7 @@ export default function LoginPage() {
               <div className="flex items-start gap-2 rounded-lg border border-green-200 bg-green-50 p-3 text-green-700">
                 <CheckCircle className="mt-0.5 h-4 w-4 flex-shrink-0" />
                 <span className="text-sm">
-                  Inicio de sesión correcto. Redirigiendo...
+                  Operación realizada correctamente.
                 </span>
               </div>
             )}
@@ -154,6 +201,7 @@ export default function LoginPage() {
                   className="pl-9"
                   autoComplete="email"
                   required
+                  disabled={isSubmitting}
                 />
               </div>
             </div>
@@ -172,6 +220,7 @@ export default function LoginPage() {
                   className="pl-9"
                   autoComplete="current-password"
                   required
+                  disabled={isSubmitting}
                 />
               </div>
             </div>
@@ -179,10 +228,13 @@ export default function LoginPage() {
             <Button
               type="submit"
               className="w-full"
-              disabled={isLoading || success}
+              disabled={isSubmitting}
             >
-              {isLoading ? (
-                'Validando...'
+              {isSubmitting ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Validando...
+                </>
               ) : (
                 <>
                   <LogIn className="mr-2 h-4 w-4" />
@@ -191,6 +243,18 @@ export default function LoginPage() {
               )}
             </Button>
           </form>
+
+          <div className="mt-4">
+            <Button
+              type="button"
+              variant="ghost"
+              className="w-full text-sm"
+              onClick={handleResendConfirmation}
+              disabled={isSubmitting}
+            >
+              Reenviar correo de confirmación
+            </Button>
+          </div>
 
           <div className="mt-6 border-t pt-6">
             <p className="mb-4 text-center text-sm text-muted-foreground">
@@ -214,8 +278,8 @@ export default function LoginPage() {
           </div>
 
           <div className="mt-6 rounded-xl border border-blue-200 bg-blue-50 p-4 text-sm text-blue-800">
-            Si acabas de registrarte, primero confirma tu correo electrónico desde
-            el email enviado por Supabase.
+            Si acabas de registrarte, primero confirma tu correo electrónico.
+            Si no encuentras el mensaje, revisa spam o usa “Reenviar correo de confirmación”.
           </div>
         </CardContent>
       </Card>
