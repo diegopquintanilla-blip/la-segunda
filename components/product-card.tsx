@@ -1,10 +1,12 @@
 'use client';
 
 import Link from 'next/link';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { Heart, MapPin, Star, Eye, ImageIcon } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { useAuth } from '@/lib/auth-context';
 
 export type Product = {
   id: string;
@@ -26,6 +28,16 @@ export type Product = {
 type ProductCardProps = {
   product: Product;
 };
+
+type FavoriteItem = {
+  userId: string;
+  productId: string;
+  createdAt: string;
+  status: 'favorite';
+};
+
+const FAVORITES_KEY = 'la-segunda-favorites';
+const PRODUCTS_KEY = 'la-segunda-products';
 
 function getProductTitle(product: Product) {
   return product.title || product.name || 'Producto sin título';
@@ -62,8 +74,69 @@ function getConditionLabel(condition?: string) {
   return condition;
 }
 
+function getStoredFavorites(): FavoriteItem[] {
+  if (typeof window === 'undefined') return [];
+
+  try {
+    const rawFavorites = localStorage.getItem(FAVORITES_KEY);
+
+    if (!rawFavorites) return [];
+
+    const parsedFavorites = JSON.parse(rawFavorites);
+
+    if (!Array.isArray(parsedFavorites)) return [];
+
+    return parsedFavorites;
+  } catch {
+    return [];
+  }
+}
+
+function saveStoredFavorites(favorites: FavoriteItem[]) {
+  if (typeof window === 'undefined') return;
+
+  localStorage.setItem(FAVORITES_KEY, JSON.stringify(favorites));
+}
+
+function updateLocalProductFavoriteCount(productId: string, increment: number) {
+  if (typeof window === 'undefined') return;
+
+  try {
+    const rawProducts = localStorage.getItem(PRODUCTS_KEY);
+
+    if (!rawProducts) return;
+
+    const products = JSON.parse(rawProducts);
+
+    if (!Array.isArray(products)) return;
+
+    const updatedProducts = products.map((product: any) => {
+      if (String(product.id) !== String(productId)) return product;
+
+      const currentFavoriteCount = Number(product.favoriteCount || 0);
+      const newFavoriteCount = Math.max(currentFavoriteCount + increment, 0);
+
+      return {
+        ...product,
+        favoriteCount: newFavoriteCount,
+      };
+    });
+
+    localStorage.setItem(PRODUCTS_KEY, JSON.stringify(updatedProducts));
+  } catch {
+    console.log('[La Segunda] No se pudo actualizar favoriteCount.');
+  }
+}
+
 export function ProductCard({ product }: ProductCardProps) {
+  const router = useRouter();
+  const { user, isAuthenticated } = useAuth();
+
   const [imageError, setImageError] = useState(false);
+  const [isFavorite, setIsFavorite] = useState(false);
+  const [favoriteCount, setFavoriteCount] = useState(
+    Number(product.favoriteCount || 0)
+  );
 
   const title = getProductTitle(product);
   const imageUrl = getProductImage(product);
@@ -71,6 +144,75 @@ export function ProductCard({ product }: ProductCardProps) {
 
   const price = Number(product.price || 0);
   const views = Number(product.views || 0);
+
+  useEffect(() => {
+    if (!user?.id) {
+      setIsFavorite(false);
+      setFavoriteCount(Number(product.favoriteCount || 0));
+      return;
+    }
+
+    const favorites = getStoredFavorites();
+
+    const foundFavorite = favorites.some((favorite) => {
+      return (
+        favorite.userId === user.id &&
+        String(favorite.productId) === String(product.id)
+      );
+    });
+
+    setIsFavorite(foundFavorite);
+    setFavoriteCount(Number(product.favoriteCount || 0));
+  }, [product.id, product.favoriteCount, user?.id]);
+
+  const handleToggleFavorite = (event: React.MouseEvent<HTMLButtonElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+
+    if (!isAuthenticated || !user?.id) {
+      router.push('/auth/login');
+      return;
+    }
+
+    const favorites = getStoredFavorites();
+
+    const alreadyFavorite = favorites.some((favorite) => {
+      return (
+        favorite.userId === user.id &&
+        String(favorite.productId) === String(product.id)
+      );
+    });
+
+    if (alreadyFavorite) {
+      const updatedFavorites = favorites.filter((favorite) => {
+        return !(
+          favorite.userId === user.id &&
+          String(favorite.productId) === String(product.id)
+        );
+      });
+
+      saveStoredFavorites(updatedFavorites);
+      updateLocalProductFavoriteCount(product.id, -1);
+
+      setIsFavorite(false);
+      setFavoriteCount((current) => Math.max(current - 1, 0));
+
+      return;
+    }
+
+    const newFavorite: FavoriteItem = {
+      userId: user.id,
+      productId: product.id,
+      createdAt: new Date().toISOString(),
+      status: 'favorite',
+    };
+
+    saveStoredFavorites([...favorites, newFavorite]);
+    updateLocalProductFavoriteCount(product.id, 1);
+
+    setIsFavorite(true);
+    setFavoriteCount((current) => current + 1);
+  };
 
   return (
     <Link href={`/product/${product.id}`}>
@@ -105,10 +247,28 @@ export function ProductCard({ product }: ProductCardProps) {
 
           <button
             type="button"
-            onClick={(event) => event.preventDefault()}
-            className="absolute right-3 top-3 flex h-10 w-10 items-center justify-center rounded-full bg-white/90 shadow-sm transition hover:bg-white"
+            onClick={handleToggleFavorite}
+            aria-label={
+              isFavorite
+                ? 'Quitar producto de favoritos'
+                : 'Agregar producto a favoritos'
+            }
+            title={
+              isFavorite
+                ? 'Quitar de favoritos'
+                : 'Guardar producto en favoritos'
+            }
+            className={`absolute right-3 top-3 flex h-10 w-10 items-center justify-center rounded-full shadow-sm transition ${
+              isFavorite
+                ? 'bg-red-50 text-red-600 hover:bg-red-100'
+                : 'bg-white/90 text-slate-700 hover:bg-white'
+            }`}
           >
-            <Heart className="h-5 w-5 text-slate-700" />
+            <Heart
+              className={`h-5 w-5 ${
+                isFavorite ? 'fill-red-500 text-red-500' : ''
+              }`}
+            />
           </button>
         </div>
 
@@ -140,7 +300,7 @@ export function ProductCard({ product }: ProductCardProps) {
 
             <p className="flex items-center gap-1 text-sm text-muted-foreground">
               <Star className="h-4 w-4 fill-yellow-400 text-yellow-400" />
-              {views} vistas
+              {favoriteCount} favoritos
             </p>
           </div>
 
