@@ -7,23 +7,39 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { mockProducts, mockReviews, mockUsers } from '@/lib/mock-data';
-import { Star, MapPin, Calendar, Shield, Edit2, CheckCircle } from 'lucide-react';
-import { useState } from 'react';
+import { Star, MapPin, Calendar, Edit2, CheckCircle } from 'lucide-react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { getGenderLabel, getAccountTypeLabel } from '@/lib/avatar-utils';
+import { getAccountTypeLabel } from '@/lib/avatar-utils';
 
 export default function ProfilePage() {
   const { user, isAuthenticated, updateUser } = useAuth();
   const router = useRouter();
+
   const [isEditing, setIsEditing] = useState(false);
-  const [bio, setBio] = useState(user?.bio || '');
-  const [city, setCity] = useState(user?.city || '');
+  const [bio, setBio] = useState('');
+  const [city, setCity] = useState('');
+
+  useEffect(() => {
+    if (!isAuthenticated || !user) {
+      router.push('/auth/login');
+      return;
+    }
+
+    setBio(user.bio || '');
+    setCity(user.city || '');
+  }, [isAuthenticated, user, router]);
 
   if (!isAuthenticated || !user) {
-    router.push('/auth/login');
     return null;
   }
+
+  const getAvatarByGender = (gender?: string) => {
+    if (gender === 'male') return '👨‍💼';
+    if (gender === 'female') return '👩‍💼';
+    return '🙂';
+  };
 
   const userReviews = mockReviews.filter((r) => r.buyerId === user.id);
   const userProducts = mockProducts.filter((p) => p.sellerId === user.id);
@@ -48,21 +64,22 @@ export default function ProfilePage() {
       <Header />
 
       <div className="container mx-auto px-4 py-8">
-        {/* Profile Header */}
         <div className="grid md:grid-cols-3 gap-6 mb-8">
           <div className="md:col-span-2">
             <Card>
               <CardContent className="pt-6">
                 {!isEditing ? (
                   <div className="flex items-start gap-6">
-                    <img
-                      src={user.avatar}
-                      alt={user.name}
-                      className="w-24 h-24 rounded-full border-4 border-primary/10"
-                    />
+                    <div className="flex h-24 w-24 items-center justify-center rounded-full border-4 border-primary/10 bg-muted shadow-sm">
+                      <span className="text-5xl">
+                        {getAvatarByGender(user.gender)}
+                      </span>
+                    </div>
+
                     <div className="flex-1">
                       <div className="flex items-center gap-3 mb-2">
                         <h1 className="text-2xl font-bold">{user.name}</h1>
+
                         {user.verificationStatus === 'verified' && (
                           <Badge className="bg-green-100 text-green-800 gap-1">
                             <CheckCircle className="w-3 h-3" />
@@ -78,6 +95,7 @@ export default function ProfilePage() {
                             {user.city}
                           </Badge>
                         )}
+
                         {user.accountType && (
                           <Badge variant="outline">
                             {getAccountTypeLabel(user.accountType)}
@@ -90,6 +108,7 @@ export default function ProfilePage() {
                           <Star className="w-4 h-4 fill-yellow-400 text-yellow-400" />
                           <span className="font-semibold">{user.rating}</span>
                         </div>
+
                         <span className="text-sm text-muted-foreground">
                           ({user.reviewCount} calificaciones)
                         </span>
@@ -107,10 +126,11 @@ export default function ProfilePage() {
 
                       <p className="text-sm text-muted-foreground mt-3 flex items-center gap-1">
                         <Calendar className="w-4 h-4" />
-                        Miembro desde {new Date(user.joinDate).toLocaleDateString('es-PE', {
+                        Miembro desde{' '}
+                        {new Date(user.joinDate).toLocaleDateString('es-PE', {
                           year: 'numeric',
                           month: 'long',
-                          day: 'numeric'
+                          day: 'numeric',
                         })}
                       </p>
                     </div>
@@ -125,9 +145,24 @@ export default function ProfilePage() {
                         placeholder="Tu ciudad"
                       />
                     </div>
+
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium">Sobre mí</label>
+                      <Input
+                        value={bio}
+                        onChange={(e) => setBio(e.target.value)}
+                        placeholder="Cuéntanos algo sobre ti"
+                      />
+                    </div>
+
                     <div className="flex gap-2">
-                      <Button onClick={handleProfileUpdate}>Guardar cambios</Button>
-                      <Button variant="outline" onClick={() => setIsEditing(false)}>Cancelar</Button>
+                      <Button onClick={handleProfileUpdate}>
+                        Guardar cambios
+                      </Button>
+
+                      <Button variant="outline" onClick={() => setIsEditing(false)}>
+                        Cancelar
+                      </Button>
                     </div>
                   </div>
                 )}
@@ -135,28 +170,31 @@ export default function ProfilePage() {
             </Card>
           </div>
 
-          {/* Stats Card */}
           <Card>
             <CardHeader>
               <CardTitle className="text-lg">Estadísticas</CardTitle>
             </CardHeader>
+
             <CardContent className="space-y-4">
               <div>
                 <div className="text-2xl font-bold">{userProducts.length}</div>
                 <p className="text-sm text-muted-foreground">Productos activos</p>
               </div>
+
               <div>
                 <div className="text-2xl font-bold">{receivedReviews.length}</div>
                 <p className="text-sm text-muted-foreground">Reseñas recibidas</p>
               </div>
+
               <div>
                 <div className="text-2xl font-bold">
                   {userProducts.reduce((sum, p) => sum + p.views, 0)}
                 </div>
                 <p className="text-sm text-muted-foreground">Vistas totales</p>
               </div>
-              <Button 
-                variant="outline" 
+
+              <Button
+                variant="outline"
                 className="w-full mt-4"
                 onClick={() => setIsEditing(!isEditing)}
               >
@@ -167,11 +205,11 @@ export default function ProfilePage() {
           </Card>
         </div>
 
-        {/* Bio Section */}
         <Card className="mb-8">
           <CardHeader>
             <CardTitle>Sobre mí</CardTitle>
           </CardHeader>
+
           <CardContent>
             <p className="text-muted-foreground">
               {user.bio || 'Sin información de perfil'}
@@ -179,52 +217,51 @@ export default function ProfilePage() {
           </CardContent>
         </Card>
 
-        {/* Tabs */}
         <div className="space-y-6">
-          {/* Products Section */}
           {user.isSeller && (
-            <>
-              <div>
-                <h2 className="text-2xl font-bold mb-4">Mis productos</h2>
-                {userProducts.length > 0 ? (
-                  <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-                    {userProducts.map((product) => (
-                      <Link key={product.id} href={`/product/${product.id}`}>
-                        <div className="bg-card rounded-lg border overflow-hidden hover:shadow-lg transition">
-                          <div className="aspect-square bg-muted overflow-hidden">
-                            <img
-                              src={product.images[0]}
-                              alt={product.title}
-                              className="w-full h-full object-cover hover:scale-105 transition"
-                            />
-                          </div>
-                          <div className="p-3">
-                            <p className="font-semibold text-sm line-clamp-2">
-                              {product.title}
-                            </p>
-                            <p className="text-lg font-bold text-primary mt-1">
-                              S/ {product.price.toLocaleString()}
-                            </p>
-                          </div>
+            <div>
+              <h2 className="text-2xl font-bold mb-4">Mis productos</h2>
+
+              {userProducts.length > 0 ? (
+                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                  {userProducts.map((product) => (
+                    <Link key={product.id} href={`/product/${product.id}`}>
+                      <div className="bg-card rounded-lg border overflow-hidden hover:shadow-lg transition">
+                        <div className="aspect-square bg-muted overflow-hidden">
+                          <img
+                            src={product.images[0]}
+                            alt={product.title}
+                            className="w-full h-full object-cover hover:scale-105 transition"
+                          />
                         </div>
-                      </Link>
-                    ))}
-                  </div>
-                ) : (
-                  <Card className="p-8 text-center">
-                    <p className="text-muted-foreground mb-4">
-                      No has publicado productos aún
-                    </p>
-                    <Link href="/seller/dashboard">
-                      <Button>Ir a mi tienda</Button>
+
+                        <div className="p-3">
+                          <p className="font-semibold text-sm line-clamp-2">
+                            {product.title}
+                          </p>
+
+                          <p className="text-lg font-bold text-primary mt-1">
+                            S/ {product.price.toLocaleString()}
+                          </p>
+                        </div>
+                      </div>
                     </Link>
-                  </Card>
-                )}
-              </div>
-            </>
+                  ))}
+                </div>
+              ) : (
+                <Card className="p-8 text-center">
+                  <p className="text-muted-foreground mb-4">
+                    No has publicado productos aún
+                  </p>
+
+                  <Link href="/seller/dashboard">
+                    <Button>Ir a mi tienda</Button>
+                  </Link>
+                </Card>
+              )}
+            </div>
           )}
 
-          {/* Reviews Section */}
           <div>
             <h2 className="text-2xl font-bold mb-4">
               {user.isSeller ? 'Reseñas recibidas' : 'Mis reseñas'}
@@ -236,6 +273,7 @@ export default function ProfilePage() {
                   const reviewerName = mockUsers.find(
                     (u) => u.id === review.buyerId
                   )?.name;
+
                   return (
                     <Card key={review.id}>
                       <CardHeader>
@@ -246,6 +284,7 @@ export default function ProfilePage() {
                             </CardTitle>
                             <CardDescription>{review.createdAt}</CardDescription>
                           </div>
+
                           <div className="flex items-center gap-1">
                             {Array.from({ length: review.rating }).map((_, i) => (
                               <Star
@@ -256,6 +295,7 @@ export default function ProfilePage() {
                           </div>
                         </div>
                       </CardHeader>
+
                       <CardContent>
                         <p className="text-muted-foreground">{review.comment}</p>
                       </CardContent>
