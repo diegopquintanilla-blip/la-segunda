@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { supabase } from '@/lib/supabase/client';
@@ -15,13 +15,58 @@ import {
 } from '@/components/ui/card';
 import {
   AlertCircle,
-  CheckCircle,
-  Lock,
-  Mail,
   ArrowLeft,
-  LogIn,
+  CheckCircle,
   Loader2,
+  Lock,
+  LogIn,
+  Mail,
 } from 'lucide-react';
+
+function getFriendlyError(message: string) {
+  const text = message.toLowerCase();
+
+  if (
+    text.includes('email not confirmed') ||
+    text.includes('not confirmed') ||
+    text.includes('confirm')
+  ) {
+    return 'Debes confirmar tu correo electrónico antes de iniciar sesión. Revisa tu bandeja de entrada o spam.';
+  }
+
+  if (
+    text.includes('invalid login credentials') ||
+    text.includes('invalid credentials') ||
+    text.includes('login credentials')
+  ) {
+    return 'Correo o contraseña incorrectos.';
+  }
+
+  if (text.includes('rate limit')) {
+    return 'Has realizado demasiados intentos. Espera unos minutos e intenta nuevamente.';
+  }
+
+  if (text.includes('fetch failed') || text.includes('failed to fetch')) {
+    return 'No se pudo conectar con Supabase. Verifica tus variables de entorno en Vercel.';
+  }
+
+  return message || 'No se pudo iniciar sesión. Intenta nuevamente.';
+}
+
+function withTimeout<T>(promise: Promise<T>, timeoutMs = 15000): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<T>((_, reject) => {
+      window.setTimeout(() => {
+        reject(
+          new Error(
+            'La validación está demorando demasiado. Intenta nuevamente o revisa la conexión con Supabase.'
+          )
+        );
+      }, timeoutMs);
+    }),
+  ]);
+}
 
 export default function LoginPage() {
   const router = useRouter();
@@ -30,34 +75,21 @@ export default function LoginPage() {
   const [password, setPassword] = useState('');
 
   const [error, setError] = useState('');
-  const [success, setSuccess] = useState(false);
+  const [success, setSuccess] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const getFriendlyError = (message: string) => {
-    const lowerMessage = message.toLowerCase();
+  useEffect(() => {
+    if (!isSubmitting) return;
 
-    if (
-      lowerMessage.includes('email not confirmed') ||
-      lowerMessage.includes('not confirmed') ||
-      lowerMessage.includes('confirm')
-    ) {
-      return 'Debes confirmar tu correo electrónico antes de iniciar sesión. Revisa tu bandeja de entrada o spam.';
-    }
+    const emergencyTimer = window.setTimeout(() => {
+      setIsSubmitting(false);
+      setError(
+        'La validación tomó demasiado tiempo. El botón fue desbloqueado. Intenta nuevamente.'
+      );
+    }, 18000);
 
-    if (
-      lowerMessage.includes('invalid login credentials') ||
-      lowerMessage.includes('invalid credentials') ||
-      lowerMessage.includes('login credentials')
-    ) {
-      return 'Correo o contraseña incorrectos.';
-    }
-
-    if (lowerMessage.includes('rate limit')) {
-      return 'Has realizado demasiados intentos. Espera unos minutos e intenta nuevamente.';
-    }
-
-    return message || 'No se pudo iniciar sesión. Intenta nuevamente.';
-  };
+    return () => window.clearTimeout(emergencyTimer);
+  }, [isSubmitting]);
 
   const validateForm = () => {
     if (!email.trim()) {
@@ -79,11 +111,13 @@ export default function LoginPage() {
     return '';
   };
 
-  const handleSubmit = async (event: React.FormEvent) => {
+  const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
 
+    if (isSubmitting) return;
+
     setError('');
-    setSuccess(false);
+    setSuccess('');
 
     const validationError = validateForm();
 
@@ -97,33 +131,40 @@ export default function LoginPage() {
     try {
       const cleanEmail = email.trim().toLowerCase();
 
-      const { data, error: loginError } = await supabase.auth.signInWithPassword({
-        email: cleanEmail,
-        password,
-      });
+      const { data, error: loginError } = await withTimeout(
+        supabase.auth.signInWithPassword({
+          email: cleanEmail,
+          password,
+        }),
+        15000
+      );
 
       if (loginError) {
         throw loginError;
       }
 
-      if (!data.session || !data.user) {
-        throw new Error('No se pudo iniciar sesión. Intenta nuevamente.');
+      if (!data?.user || !data?.session) {
+        throw new Error('No se pudo iniciar sesión. Verifica tus credenciales.');
       }
 
-      setSuccess(true);
+      setSuccess('Inicio de sesión correcto. Redirigiendo...');
+      setIsSubmitting(false);
 
-      setTimeout(() => {
-        router.push('/profile');
+      window.setTimeout(() => {
+        router.replace('/profile');
         router.refresh();
-      }, 800);
+      }, 700);
     } catch (err: any) {
-      setError(getFriendlyError(err?.message || 'Error al iniciar sesión'));
+      setError(getFriendlyError(err?.message || 'Error al iniciar sesión.'));
       setIsSubmitting(false);
     }
   };
 
   const handleResendConfirmation = async () => {
+    if (isSubmitting) return;
+
     setError('');
+    setSuccess('');
 
     if (!email.trim() || !email.includes('@')) {
       setError('Ingresa tu correo electrónico para reenviar la confirmación.');
@@ -133,22 +174,34 @@ export default function LoginPage() {
     setIsSubmitting(true);
 
     try {
-      const { error: resendError } = await supabase.auth.resend({
-        type: 'signup',
-        email: email.trim().toLowerCase(),
-      });
+      const { error: resendError } = await withTimeout(
+        supabase.auth.resend({
+          type: 'signup',
+          email: email.trim().toLowerCase(),
+        }),
+        15000
+      );
 
       if (resendError) {
         throw resendError;
       }
 
-      setError('');
-      setSuccess(true);
+      setSuccess('Correo de confirmación reenviado. Revisa tu bandeja o spam.');
     } catch (err: any) {
-      setError(err?.message || 'No se pudo reenviar el correo de confirmación.');
+      setError(
+        getFriendlyError(
+          err?.message || 'No se pudo reenviar el correo de confirmación.'
+        )
+      );
     } finally {
       setIsSubmitting(false);
     }
+  };
+
+  const handleResetButton = () => {
+    setIsSubmitting(false);
+    setError('');
+    setSuccess('');
   };
 
   return (
@@ -181,9 +234,7 @@ export default function LoginPage() {
             {success && (
               <div className="flex items-start gap-2 rounded-lg border border-green-200 bg-green-50 p-3 text-green-700">
                 <CheckCircle className="mt-0.5 h-4 w-4 flex-shrink-0" />
-                <span className="text-sm">
-                  Operación realizada correctamente.
-                </span>
+                <span className="text-sm">{success}</span>
               </div>
             )}
 
@@ -225,11 +276,7 @@ export default function LoginPage() {
               </div>
             </div>
 
-            <Button
-              type="submit"
-              className="w-full"
-              disabled={isSubmitting}
-            >
+            <Button type="submit" className="w-full" disabled={isSubmitting}>
               {isSubmitting ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -243,6 +290,17 @@ export default function LoginPage() {
               )}
             </Button>
           </form>
+
+          {isSubmitting && (
+            <Button
+              type="button"
+              variant="ghost"
+              className="mt-3 w-full text-sm"
+              onClick={handleResetButton}
+            >
+              Desbloquear botón
+            </Button>
+          )}
 
           <div className="mt-4">
             <Button
@@ -279,7 +337,8 @@ export default function LoginPage() {
 
           <div className="mt-6 rounded-xl border border-blue-200 bg-blue-50 p-4 text-sm text-blue-800">
             Si acabas de registrarte, primero confirma tu correo electrónico.
-            Si no encuentras el mensaje, revisa spam o usa “Reenviar correo de confirmación”.
+            Si el usuario está en estado “Waiting for verification” en Supabase,
+            no podrá iniciar sesión hasta confirmar el correo.
           </div>
         </CardContent>
       </Card>
