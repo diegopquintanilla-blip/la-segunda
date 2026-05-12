@@ -3,9 +3,16 @@
 import { Header } from '@/components/header';
 import { useAuth } from '@/lib/auth-context';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { mockProducts, mockOrders, mockMemberships } from '@/lib/mock-data';
+import { Input } from '@/components/ui/input';
+import { mockProducts, mockOrders } from '@/lib/mock-data';
 import {
   BarChart,
   Bar,
@@ -24,75 +31,531 @@ import {
   Heart,
   Plus,
   MoreVertical,
+  Lock,
+  Crown,
+  PackagePlus,
+  AlertTriangle,
+  CheckCircle,
 } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import { useEffect, useMemo, useState } from 'react';
+
+type PlanType = 'free' | 'plus' | 'premium';
+
+type PlanConfig = {
+  name: string;
+  limit: number;
+  commissionRate: number;
+  price: string;
+  badgeClass: string;
+};
+
+const PLAN_CONFIG: Record<PlanType, PlanConfig> = {
+  free: {
+    name: 'Plan Gratis',
+    limit: 3,
+    commissionRate: 8,
+    price: 'S/ 0',
+    badgeClass: 'bg-slate-100 text-slate-800',
+  },
+  plus: {
+    name: 'La Segunda Plus',
+    limit: 20,
+    commissionRate: 5,
+    price: 'S/ 19.90/mes',
+    badgeClass: 'bg-blue-100 text-blue-800',
+  },
+  premium: {
+    name: 'La Segunda Premium',
+    limit: Infinity,
+    commissionRate: 2,
+    price: 'S/ 49.90/mes',
+    badgeClass: 'bg-amber-100 text-amber-800',
+  },
+};
 
 export default function SellerDashboardPage() {
   const { user, isAuthenticated } = useAuth();
   const router = useRouter();
 
-  if (!isAuthenticated) {
-    router.push('/auth/login');
+  const [localProducts, setLocalProducts] = useState<any[]>([]);
+  const [showForm, setShowForm] = useState(false);
+  const [formError, setFormError] = useState('');
+  const [formSuccess, setFormSuccess] = useState('');
+
+  const [productTitle, setProductTitle] = useState('');
+  const [productDescription, setProductDescription] = useState('');
+  const [productCategory, setProductCategory] = useState('Electrónica');
+  const [productCondition, setProductCondition] = useState('Bueno');
+  const [productPrice, setProductPrice] = useState('');
+  const [productCity, setProductCity] = useState('');
+  const [productImage, setProductImage] = useState('');
+
+  useEffect(() => {
+    if (!isAuthenticated) {
+      router.push('/auth/login');
+    }
+  }, [isAuthenticated, router]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    const rawProducts = localStorage.getItem('la-segunda-products');
+
+    if (!rawProducts) return;
+
+    try {
+      const parsedProducts = JSON.parse(rawProducts);
+
+      if (Array.isArray(parsedProducts)) {
+        setLocalProducts(parsedProducts);
+      }
+    } catch {
+      setLocalProducts([]);
+    }
+  }, []);
+
+  if (!isAuthenticated || !user) {
     return null;
   }
 
-  if (!user?.isSeller) {
+  const currentUser = user as any;
+
+  const getCurrentPlan = (): PlanType => {
+    const rawPlan = String(
+      currentUser.membershipType ||
+        currentUser.membership ||
+        currentUser.plan ||
+        currentUser.sellerBadge ||
+        'free'
+    ).toLowerCase();
+
+    if (rawPlan.includes('premium') || rawPlan.includes('elite')) {
+      return 'premium';
+    }
+
+    if (rawPlan.includes('plus')) {
+      return 'plus';
+    }
+
+    return 'free';
+  };
+
+  const currentPlanType = getCurrentPlan();
+  const currentPlan = PLAN_CONFIG[currentPlanType];
+
+  const allProducts = useMemo(() => {
+    const merged = [...mockProducts, ...localProducts];
+    const uniqueProducts = new Map();
+
+    merged.forEach((product) => {
+      if (product?.id) {
+        uniqueProducts.set(product.id, product);
+      }
+    });
+
+    return Array.from(uniqueProducts.values());
+  }, [localProducts]);
+
+  const sellerProducts = allProducts.filter((product: any) => {
     return (
-      <div className="min-h-screen bg-background">
-        <Header />
-        <div className="container mx-auto px-4 py-20 text-center">
-          <h1 className="text-2xl font-bold mb-4">Acceso restringido</h1>
-          <p className="text-muted-foreground mb-6">
-            Solo los vendedores pueden acceder al panel de ventas.
-          </p>
-          <Link href="/">
-            <Button>Volver al inicio</Button>
-          </Link>
-        </div>
-      </div>
+      product.sellerId === user.id ||
+      product.userId === user.id ||
+      product.ownerId === user.id
     );
-  }
+  });
 
-  const sellerProducts = mockProducts.filter((p) => p.sellerId === user.id);
-  const sellerOrders = mockOrders.filter((o) => o.sellerId === user.id);
+  const sellerOrders = mockOrders.filter((order) => order.sellerId === user.id);
+
+  const isVerified = user.verificationStatus === 'verified';
+
+  const postingLimit = isVerified
+    ? currentPlan.limit
+    : Math.min(currentPlan.limit, 2);
+
+  const publishedCount = sellerProducts.length;
+  const hasUnlimitedPosts = postingLimit === Infinity;
+  const remainingPosts = hasUnlimitedPosts
+    ? Infinity
+    : Math.max(postingLimit - publishedCount, 0);
+
+  const canPublish = hasUnlimitedPosts || publishedCount < postingLimit;
+
+  const progressPercent = hasUnlimitedPosts
+    ? 100
+    : Math.min((publishedCount / postingLimit) * 100, 100);
+
   const totalRevenue = sellerOrders.reduce((sum, order) => sum + order.amount, 0);
-  const totalSales = sellerOrders.filter((o) => o.status === 'completed').length;
-  const totalViews = sellerProducts.reduce((sum, p) => sum + p.views, 0);
-  const totalFavorites = sellerProducts.reduce((sum, p) => sum + p.favoriteCount, 0);
+  const totalSales = sellerOrders.filter((order) => order.status === 'completed').length;
+  const totalViews = sellerProducts.reduce((sum: number, product: any) => sum + (product.views || 0), 0);
+  const totalFavorites = sellerProducts.reduce(
+    (sum: number, product: any) => sum + (product.favoriteCount || 0),
+    0
+  );
 
-  const membership = mockMemberships.find((m) => m.type === user.sellerBadge) || mockMemberships[0];
-  const commissionRate = membership.commissionRate;
-  const commissionEarnings = (totalRevenue * commissionRate) / 100;
+  const commissionEarnings = (totalRevenue * currentPlan.commissionRate) / 100;
   const netEarnings = totalRevenue - commissionEarnings;
 
-  // Chart data
   const chartData = [
-    { month: 'Ene', sales: 12, revenue: 2400 },
-    { month: 'Feb', sales: 19, revenue: 2210 },
-    { month: 'Mar', sales: 5, revenue: 2290 },
-    { month: 'Abr', sales: 22, revenue: 2000 },
-    { month: 'May', sales: 28, revenue: 2181 },
-    { month: 'Jun', sales: 20, revenue: 2500 },
+    { month: 'Ene', sales: 0, revenue: 0 },
+    { month: 'Feb', sales: 0, revenue: 0 },
+    { month: 'Mar', sales: 0, revenue: 0 },
+    { month: 'Abr', sales: 0, revenue: 0 },
+    { month: 'May', sales: totalSales, revenue: totalRevenue },
+    { month: 'Jun', sales: 0, revenue: 0 },
   ];
 
+  const resetForm = () => {
+    setProductTitle('');
+    setProductDescription('');
+    setProductCategory('Electrónica');
+    setProductCondition('Bueno');
+    setProductPrice('');
+    setProductCity('');
+    setProductImage('');
+  };
+
+  const handleCreateProduct = (event: React.FormEvent) => {
+    event.preventDefault();
+    setFormError('');
+    setFormSuccess('');
+
+    if (!canPublish) {
+      setFormError('Alcanzaste el límite de publicaciones de tu plan actual.');
+      return;
+    }
+
+    if (!productTitle.trim()) {
+      setFormError('Ingresa el nombre del producto.');
+      return;
+    }
+
+    if (!productDescription.trim()) {
+      setFormError('Ingresa una descripción del producto.');
+      return;
+    }
+
+    if (!productPrice || Number(productPrice) <= 0) {
+      setFormError('Ingresa un precio válido.');
+      return;
+    }
+
+    if (!productCity.trim()) {
+      setFormError('Ingresa la ciudad donde se encuentra el producto.');
+      return;
+    }
+
+    const newProduct = {
+      id: `local-${Date.now()}`,
+      sellerId: user.id,
+      title: productTitle.trim(),
+      description: productDescription.trim(),
+      category: productCategory,
+      condition: productCondition,
+      price: Number(productPrice),
+      city: productCity.trim(),
+      images: [
+        productImage.trim() ||
+          'https://placehold.co/600x600?text=La+Segunda',
+      ],
+      status: 'active',
+      views: 0,
+      favoriteCount: 0,
+      createdAt: new Date().toISOString(),
+    };
+
+    const updatedProducts = [...localProducts, newProduct];
+
+    setLocalProducts(updatedProducts);
+
+    if (typeof window !== 'undefined') {
+      localStorage.setItem(
+        'la-segunda-products',
+        JSON.stringify(updatedProducts)
+      );
+    }
+
+    setFormSuccess('Producto publicado correctamente.');
+    setShowForm(false);
+    resetForm();
+  };
+
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen bg-slate-50">
       <Header />
 
       <div className="container mx-auto px-4 py-8">
-        <div className="flex items-center justify-between mb-8">
-          <h1 className="text-3xl font-bold">Panel de ventas</h1>
-          <Link href="/seller/products/new">
-            <Button>
-              <Plus className="w-4 h-4 mr-2" />
-              Nuevo producto
+        {/* HEADER */}
+        <div className="mb-8 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+          <div>
+            <h1 className="text-3xl font-bold">Panel de publicaciones</h1>
+            <p className="text-muted-foreground">
+              Publica artículos, controla tus límites y administra tus ventas.
+            </p>
+          </div>
+
+          {canPublish ? (
+            <Button onClick={() => setShowForm(!showForm)}>
+              <Plus className="mr-2 h-4 w-4" />
+              Publicar artículo
             </Button>
-          </Link>
+          ) : (
+            <Link href="/seller/membership">
+              <Button className="bg-amber-600 hover:bg-amber-700">
+                <Crown className="mr-2 h-4 w-4" />
+                Mejorar membresía
+              </Button>
+            </Link>
+          )}
         </div>
 
-        {/* Key Stats */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+        {/* MEMBERSHIP LIMIT CARD */}
+        <Card className="mb-8 border-2">
+          <CardHeader>
+            <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+              <div>
+                <CardTitle className="flex items-center gap-2">
+                  <PackagePlus className="h-5 w-5 text-primary" />
+                  Control de publicaciones
+                </CardTitle>
+                <CardDescription>
+                  Tu capacidad para publicar depende de tu plan y verificación de identidad.
+                </CardDescription>
+              </div>
+
+              <Badge className={currentPlan.badgeClass}>
+                {currentPlan.name}
+              </Badge>
+            </div>
+          </CardHeader>
+
+          <CardContent>
+            <div className="mb-5 grid gap-4 md:grid-cols-4">
+              <div className="rounded-xl bg-slate-100 p-4">
+                <p className="text-sm text-muted-foreground">Plan actual</p>
+                <p className="text-xl font-bold">{currentPlan.name}</p>
+                <p className="text-sm text-muted-foreground">{currentPlan.price}</p>
+              </div>
+
+              <div className="rounded-xl bg-slate-100 p-4">
+                <p className="text-sm text-muted-foreground">Publicados</p>
+                <p className="text-3xl font-bold">{publishedCount}</p>
+              </div>
+
+              <div className="rounded-xl bg-slate-100 p-4">
+                <p className="text-sm text-muted-foreground">Límite</p>
+                <p className="text-3xl font-bold">
+                  {hasUnlimitedPosts ? '∞' : postingLimit}
+                </p>
+              </div>
+
+              <div className="rounded-xl bg-slate-100 p-4">
+                <p className="text-sm text-muted-foreground">Disponibles</p>
+                <p className="text-3xl font-bold">
+                  {hasUnlimitedPosts ? 'Ilimitado' : remainingPosts}
+                </p>
+              </div>
+            </div>
+
+            {!hasUnlimitedPosts && (
+              <div className="mb-5">
+                <div className="mb-2 flex justify-between text-sm">
+                  <span>Uso de publicaciones</span>
+                  <span>
+                    {publishedCount}/{postingLimit}
+                  </span>
+                </div>
+
+                <div className="h-3 w-full overflow-hidden rounded-full bg-slate-200">
+                  <div
+                    className={`h-full rounded-full ${
+                      canPublish ? 'bg-primary' : 'bg-amber-500'
+                    }`}
+                    style={{ width: `${progressPercent}%` }}
+                  />
+                </div>
+              </div>
+            )}
+
+            {!isVerified && (
+              <div className="mb-5 rounded-xl border border-yellow-200 bg-yellow-50 p-4 text-sm text-yellow-800">
+                <div className="mb-1 flex items-center gap-2 font-semibold">
+                  <AlertTriangle className="h-4 w-4" />
+                  Verificación pendiente
+                </div>
+                Los usuarios no verificados solo pueden publicar hasta 2 artículos.
+                Verifica tu identidad para desbloquear más publicaciones.
+              </div>
+            )}
+
+            {!canPublish && (
+              <div className="rounded-xl border border-amber-200 bg-amber-50 p-5">
+                <div className="mb-2 flex items-center gap-2 font-semibold text-amber-900">
+                  <Lock className="h-5 w-5" />
+                  Alcanzaste el límite de publicaciones
+                </div>
+
+                <p className="mb-4 text-sm text-amber-800">
+                  Para continuar publicando artículos en La Segunda, debes activar una
+                  membresía Plus o Premium. Este bloqueo permite monetizar la plataforma
+                  mediante membresías.
+                </p>
+
+                <Link href="/seller/membership">
+                  <Button className="bg-amber-600 hover:bg-amber-700">
+                    <Crown className="mr-2 h-4 w-4" />
+                    Ver planes de membresía
+                  </Button>
+                </Link>
+              </div>
+            )}
+
+            {canPublish && (
+              <div className="flex flex-col gap-3 sm:flex-row">
+                <Button onClick={() => setShowForm(!showForm)}>
+                  <Plus className="mr-2 h-4 w-4" />
+                  Publicar nuevo artículo
+                </Button>
+
+                <Link href="/seller/membership">
+                  <Button variant="outline">
+                    <Crown className="mr-2 h-4 w-4" />
+                    Mejorar plan
+                  </Button>
+                </Link>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* PRODUCT FORM */}
+        {showForm && canPublish && (
+          <Card className="mb-8">
+            <CardHeader>
+              <CardTitle>Publicar nuevo artículo</CardTitle>
+              <CardDescription>
+                Completa la información del producto usado que deseas vender.
+              </CardDescription>
+            </CardHeader>
+
+            <CardContent>
+              {formError && (
+                <div className="mb-4 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+                  {formError}
+                </div>
+              )}
+
+              {formSuccess && (
+                <div className="mb-4 rounded-xl border border-green-200 bg-green-50 p-4 text-sm text-green-700">
+                  {formSuccess}
+                </div>
+              )}
+
+              <form onSubmit={handleCreateProduct} className="space-y-4">
+                <div className="grid gap-4 md:grid-cols-2">
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">Nombre del producto</label>
+                    <Input
+                      value={productTitle}
+                      onChange={(event) => setProductTitle(event.target.value)}
+                      placeholder="Ejemplo: iPhone 13 Pro"
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">Precio</label>
+                    <Input
+                      type="number"
+                      value={productPrice}
+                      onChange={(event) => setProductPrice(event.target.value)}
+                      placeholder="Ejemplo: 1500"
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Descripción</label>
+                  <Input
+                    value={productDescription}
+                    onChange={(event) => setProductDescription(event.target.value)}
+                    placeholder="Describe el estado, uso y detalles del producto"
+                  />
+                </div>
+
+                <div className="grid gap-4 md:grid-cols-3">
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">Categoría</label>
+                    <select
+                      value={productCategory}
+                      onChange={(event) => setProductCategory(event.target.value)}
+                      className="w-full rounded-md border bg-background px-3 py-2 text-sm"
+                    >
+                      <option>Electrónica</option>
+                      <option>Celulares</option>
+                      <option>Laptops</option>
+                      <option>Ropa</option>
+                      <option>Hogar</option>
+                      <option>Muebles</option>
+                      <option>Vehículos</option>
+                      <option>Otros</option>
+                    </select>
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">Estado</label>
+                    <select
+                      value={productCondition}
+                      onChange={(event) => setProductCondition(event.target.value)}
+                      className="w-full rounded-md border bg-background px-3 py-2 text-sm"
+                    >
+                      <option>Nuevo</option>
+                      <option>Como nuevo</option>
+                      <option>Bueno</option>
+                      <option>Regular</option>
+                    </select>
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">Ciudad</label>
+                    <Input
+                      value={productCity}
+                      onChange={(event) => setProductCity(event.target.value)}
+                      placeholder="Ejemplo: Lima"
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Imagen URL opcional</label>
+                  <Input
+                    value={productImage}
+                    onChange={(event) => setProductImage(event.target.value)}
+                    placeholder="Pega una URL de imagen o déjalo vacío"
+                  />
+                </div>
+
+                <div className="flex flex-col gap-3 sm:flex-row">
+                  <Button type="submit">
+                    <CheckCircle className="mr-2 h-4 w-4" />
+                    Publicar producto
+                  </Button>
+
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => setShowForm(false)}
+                  >
+                    Cancelar
+                  </Button>
+                </div>
+              </form>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* KEY STATS */}
+        <div className="mb-8 grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
           <Card>
             <CardHeader className="pb-2">
               <CardTitle className="text-sm font-medium text-muted-foreground">
@@ -100,8 +563,10 @@ export default function SellerDashboardPage() {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">S/ {totalRevenue.toLocaleString()}</div>
-              <p className="text-xs text-muted-foreground mt-1">
+              <div className="text-2xl font-bold">
+                S/ {totalRevenue.toLocaleString()}
+              </div>
+              <p className="mt-1 text-xs text-muted-foreground">
                 Neto: S/ {netEarnings.toLocaleString()}
               </p>
             </CardContent>
@@ -115,7 +580,7 @@ export default function SellerDashboardPage() {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">{totalSales}</div>
-              <p className="text-xs text-muted-foreground mt-1">
+              <p className="mt-1 text-xs text-muted-foreground">
                 {sellerOrders.length} total
               </p>
             </CardContent>
@@ -129,7 +594,7 @@ export default function SellerDashboardPage() {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">{totalViews.toLocaleString()}</div>
-              <p className="text-xs text-muted-foreground mt-1">
+              <p className="mt-1 text-xs text-muted-foreground">
                 De {sellerProducts.length} productos
               </p>
             </CardContent>
@@ -138,20 +603,22 @@ export default function SellerDashboardPage() {
           <Card>
             <CardHeader className="pb-2">
               <CardTitle className="text-sm font-medium text-muted-foreground">
-                Calificación
+                Favoritos
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{user.rating}</div>
-              <p className="text-xs text-muted-foreground mt-1">
-                de {user.reviewCount} valoraciones
+              <div className="text-2xl font-bold">
+                {totalFavorites.toLocaleString()}
+              </div>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Guardados por compradores
               </p>
             </CardContent>
           </Card>
         </div>
 
-        {/* Charts */}
-        <div className="grid lg:grid-cols-2 gap-6 mb-8">
+        {/* CHARTS */}
+        <div className="mb-8 grid gap-6 lg:grid-cols-2">
           <Card>
             <CardHeader>
               <CardTitle>Ventas mensuales</CardTitle>
@@ -180,30 +647,37 @@ export default function SellerDashboardPage() {
                   <XAxis dataKey="month" />
                   <YAxis />
                   <Tooltip />
-                  <Line type="monotone" dataKey="revenue" stroke="var(--color-primary)" />
+                  <Line
+                    type="monotone"
+                    dataKey="revenue"
+                    stroke="var(--color-primary)"
+                  />
                 </LineChart>
               </ResponsiveContainer>
             </CardContent>
           </Card>
         </div>
 
-        {/* Membership and Commission */}
-        <div className="grid lg:grid-cols-2 gap-6 mb-8">
+        {/* MEMBERSHIP AND COMMISSION */}
+        <div className="mb-8 grid gap-6 lg:grid-cols-2">
           <Card>
             <CardHeader>
               <CardTitle>Plan actual</CardTitle>
               <CardDescription>Administra tu membresía</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between gap-4">
                 <div>
-                  <div className="font-semibold">{membership.name}</div>
+                  <div className="font-semibold">{currentPlan.name}</div>
                   <div className="text-sm text-muted-foreground">
-                    Comisión: {membership.commissionRate}%
+                    Comisión: {currentPlan.commissionRate}%
                   </div>
                 </div>
-                <Badge>{membership.price === 0 ? 'Gratis' : `S/ ${membership.price}/mes`}</Badge>
+                <Badge className={currentPlan.badgeClass}>
+                  {currentPlan.price}
+                </Badge>
               </div>
+
               <Link href="/seller/membership">
                 <Button variant="outline" className="w-full">
                   Ver planes
@@ -221,67 +695,103 @@ export default function SellerDashboardPage() {
               <div className="space-y-2 text-sm">
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Ingresos brutos:</span>
-                  <span className="font-medium">S/ {totalRevenue.toLocaleString()}</span>
+                  <span className="font-medium">
+                    S/ {totalRevenue.toLocaleString()}
+                  </span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-muted-foreground">Comisión ({commissionRate}%):</span>
-                  <span className="font-medium">-S/ {commissionEarnings.toLocaleString()}</span>
+                  <span className="text-muted-foreground">
+                    Comisión ({currentPlan.commissionRate}%):
+                  </span>
+                  <span className="font-medium">
+                    -S/ {commissionEarnings.toLocaleString()}
+                  </span>
                 </div>
-                <div className="border-t pt-2 flex justify-between">
+                <div className="flex justify-between border-t pt-2">
                   <span className="font-semibold">Ganancias netas:</span>
-                  <span className="font-bold text-primary">S/ {netEarnings.toLocaleString()}</span>
+                  <span className="font-bold text-primary">
+                    S/ {netEarnings.toLocaleString()}
+                  </span>
                 </div>
               </div>
             </CardContent>
           </Card>
         </div>
 
-        {/* Products */}
+        {/* PRODUCTS */}
         <Card className="mb-8">
           <CardHeader className="flex flex-row items-center justify-between">
             <div>
               <CardTitle>Mis productos</CardTitle>
-              <CardDescription>Administra tus productos en venta</CardDescription>
+              <CardDescription>
+                Administra tus productos publicados en La Segunda.
+              </CardDescription>
             </div>
-            <Link href="/seller/products/new">
-              <Button size="sm">
-                <Plus className="w-4 h-4 mr-1" />
+
+            {canPublish ? (
+              <Button size="sm" onClick={() => setShowForm(true)}>
+                <Plus className="mr-1 h-4 w-4" />
                 Nuevo
               </Button>
-            </Link>
+            ) : (
+              <Link href="/seller/membership">
+                <Button size="sm" className="bg-amber-600 hover:bg-amber-700">
+                  <Lock className="mr-1 h-4 w-4" />
+                  Plan
+                </Button>
+              </Link>
+            )}
           </CardHeader>
+
           <CardContent>
             {sellerProducts.length > 0 ? (
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead className="border-b">
                     <tr>
-                      <th className="text-left p-2">Producto</th>
-                      <th className="text-left p-2">Precio</th>
-                      <th className="text-left p-2">Vistas</th>
-                      <th className="text-left p-2">Favoritos</th>
-                      <th className="text-left p-2">Estado</th>
-                      <th className="text-left p-2">Acciones</th>
+                      <th className="p-2 text-left">Producto</th>
+                      <th className="p-2 text-left">Precio</th>
+                      <th className="p-2 text-left">Vistas</th>
+                      <th className="p-2 text-left">Favoritos</th>
+                      <th className="p-2 text-left">Estado</th>
+                      <th className="p-2 text-left">Acciones</th>
                     </tr>
                   </thead>
+
                   <tbody>
-                    {sellerProducts.map((product) => (
+                    {sellerProducts.map((product: any) => (
                       <tr key={product.id} className="border-b hover:bg-muted/50">
                         <td className="p-2">
                           <div className="flex items-center gap-2">
                             <img
-                              src={product.images[0]}
+                              src={product.images?.[0]}
                               alt={product.title}
-                              className="w-8 h-8 rounded object-cover"
+                              className="h-10 w-10 rounded object-cover"
                             />
-                            <span className="font-medium line-clamp-1">
+                            <span className="line-clamp-1 font-medium">
                               {product.title}
                             </span>
                           </div>
                         </td>
-                        <td className="p-2">S/ {product.price.toLocaleString()}</td>
-                        <td className="p-2">{product.views}</td>
-                        <td className="p-2">{product.favoriteCount}</td>
+
+                        <td className="p-2">
+                          S/ {Number(product.price || 0).toLocaleString()}
+                        </td>
+
+                        <td className="p-2">
+                          <div className="flex items-center gap-1">
+                            <Eye className="h-4 w-4 text-muted-foreground" />
+                            {product.views || 0}
+                          </div>
+                        </td>
+
+                        <td className="p-2">
+                          <div className="flex items-center gap-1">
+                            <Heart className="h-4 w-4 text-muted-foreground" />
+                            {product.favoriteCount || 0}
+                          </div>
+                        </td>
+
                         <td className="p-2">
                           <Badge
                             variant={
@@ -299,9 +809,10 @@ export default function SellerDashboardPage() {
                                 : 'Pendiente'}
                           </Badge>
                         </td>
+
                         <td className="p-2">
-                          <button className="p-1 hover:bg-muted rounded">
-                            <MoreVertical className="w-4 h-4" />
+                          <button className="rounded p-1 hover:bg-muted">
+                            <MoreVertical className="h-4 w-4" />
                           </button>
                         </td>
                       </tr>
@@ -310,32 +821,45 @@ export default function SellerDashboardPage() {
                 </table>
               </div>
             ) : (
-              <div className="text-center py-12">
-                <ShoppingBag className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
-                <p className="text-muted-foreground mb-4">Aún no has publicado productos</p>
-                <Link href="/seller/products/new">
-                  <Button>Publicar primer producto</Button>
-                </Link>
+              <div className="py-12 text-center">
+                <ShoppingBag className="mx-auto mb-4 h-12 w-12 text-muted-foreground" />
+                <p className="mb-4 text-muted-foreground">
+                  Aún no has publicado productos.
+                </p>
+
+                {canPublish ? (
+                  <Button onClick={() => setShowForm(true)}>
+                    Publicar primer producto
+                  </Button>
+                ) : (
+                  <Link href="/seller/membership">
+                    <Button className="bg-amber-600 hover:bg-amber-700">
+                      Ver planes de membresía
+                    </Button>
+                  </Link>
+                )}
               </div>
             )}
           </CardContent>
         </Card>
 
-        {/* Recent Orders */}
+        {/* RECENT ORDERS */}
         <Card>
           <CardHeader>
             <CardTitle>Órdenes recientes</CardTitle>
-            <CardDescription>Tus últimas ventas</CardDescription>
+            <CardDescription>Tus últimas ventas registradas.</CardDescription>
           </CardHeader>
+
           <CardContent>
             {sellerOrders.length > 0 ? (
               <div className="space-y-4">
                 {sellerOrders.map((order) => {
                   const product = mockProducts.find((p) => p.id === order.productId);
+
                   return (
                     <div
                       key={order.id}
-                      className="flex items-center justify-between p-4 border rounded-lg"
+                      className="flex items-center justify-between rounded-lg border p-4"
                     >
                       <div>
                         <h4 className="font-semibold">
@@ -345,10 +869,12 @@ export default function SellerDashboardPage() {
                           Orden {order.id} • {order.createdAt}
                         </p>
                       </div>
+
                       <div className="text-right">
                         <div className="font-bold">
                           S/ {order.amount.toLocaleString()}
                         </div>
+
                         <Badge
                           variant={
                             order.status === 'completed'
@@ -368,8 +894,8 @@ export default function SellerDashboardPage() {
                 })}
               </div>
             ) : (
-              <p className="text-center text-muted-foreground py-8">
-                Aún no tienes órdenes
+              <p className="py-8 text-center text-muted-foreground">
+                Aún no tienes órdenes.
               </p>
             )}
           </CardContent>
