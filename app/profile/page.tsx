@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { Header } from '@/components/header';
 import { useAuth } from '@/lib/auth-context';
 import { supabase } from '@/lib/supabase/client';
@@ -15,6 +16,7 @@ import {
 } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import {
+  AlertCircle,
   Calendar,
   Camera,
   CheckCircle,
@@ -29,9 +31,7 @@ import {
   Star,
   Upload,
   User,
-  AlertCircle,
 } from 'lucide-react';
-import Link from 'next/link';
 
 type ProfileData = {
   user_id: string;
@@ -77,6 +77,32 @@ const PLAN_LIMITS: Record<string, number> = {
   premium: Infinity,
 };
 
+function isValidImageUrl(value?: string | null) {
+  if (!value) return false;
+
+  const cleanValue = String(value).trim();
+
+  return (
+    cleanValue.startsWith('http://') ||
+    cleanValue.startsWith('https://') ||
+    cleanValue.startsWith('/') ||
+    cleanValue.startsWith('data:image') ||
+    cleanValue.startsWith('blob:')
+  );
+}
+
+function getAvatarEmoji(gender?: string | null) {
+  if (gender === 'male') return '👨‍💼';
+  if (gender === 'female') return '👩‍💼';
+  return '🙂';
+}
+
+function getAccountTypeLabel(accountType?: string | null) {
+  if (accountType === 'seller') return 'Vendedor';
+  if (accountType === 'both') return 'Comprador + Vendedor';
+  return 'Comprador';
+}
+
 export default function ProfilePage() {
   const router = useRouter();
   const { user, isAuthenticated, isLoading, updateUser } = useAuth();
@@ -85,6 +111,8 @@ export default function ProfilePage() {
 
   const [profile, setProfile] = useState<ProfileData | null>(null);
   const [products, setProducts] = useState<LocalProduct[]>([]);
+  const [avatarLoadError, setAvatarLoadError] = useState(false);
+
   const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
   const [avatarMessage, setAvatarMessage] = useState('');
   const [avatarError, setAvatarError] = useState('');
@@ -121,6 +149,7 @@ export default function ProfilePage() {
         setProfile(data as ProfileData);
         setBioText(data.bio || '');
         setCityText(data.city || '');
+        setAvatarLoadError(false);
       }
     };
 
@@ -157,10 +186,10 @@ export default function ProfilePage() {
     'Usuario La Segunda';
 
   const displayEmail = profile?.email || currentUser?.email || '';
-
   const displayCity = profile?.city || currentUser?.city || 'Lima';
 
-  const accountType = profile?.account_type || currentUser?.accountType || 'buyer';
+  const accountType =
+    profile?.account_type || currentUser?.accountType || 'buyer';
 
   const verificationStatus =
     profile?.verification_status || currentUser?.verificationStatus || 'pending';
@@ -173,10 +202,21 @@ export default function ProfilePage() {
       'free'
   ).toLowerCase();
 
-  const rating = Number(profile?.rating || currentUser?.rating || 0);
-  const reviewCount = Number(profile?.review_count || currentUser?.reviewCount || 0);
+  const gender = profile?.gender || currentUser?.gender || 'neutral';
 
-  const avatarUrl = profile?.avatar_url || currentUser?.avatar || '';
+  const rating = Number(profile?.rating || currentUser?.rating || 0);
+  const reviewCount = Number(
+    profile?.review_count || currentUser?.reviewCount || 0
+  );
+
+  const safeAvatarUrl =
+    profile?.avatar_url && isValidImageUrl(profile.avatar_url)
+      ? profile.avatar_url
+      : currentUser?.avatar && isValidImageUrl(currentUser.avatar)
+        ? currentUser.avatar
+        : '';
+
+  const shouldShowImageAvatar = Boolean(safeAvatarUrl) && !avatarLoadError;
 
   const userProducts = useMemo(() => {
     if (!user?.id) return [];
@@ -205,9 +245,7 @@ export default function ProfilePage() {
   );
 
   const isVerified = verificationStatus === 'verified';
-
   const planLimit = PLAN_LIMITS[membershipType] ?? 3;
-
   const postingLimit = isVerified ? planLimit : Math.min(planLimit, 2);
 
   const remainingPosts =
@@ -215,21 +253,13 @@ export default function ProfilePage() {
       ? Infinity
       : Math.max(postingLimit - activeProducts.length, 0);
 
-  const getAvatarEmoji = () => {
-    const gender = profile?.gender || currentUser?.gender || 'neutral';
-
-    if (gender === 'male') return '👨‍💼';
-    if (gender === 'female') return '👩‍💼';
-    return '🙂';
-  };
-
-  const isValidAvatarUrl = avatarUrl && String(avatarUrl).startsWith('http');
-
   const handleSelectAvatar = () => {
     fileInputRef.current?.click();
   };
 
-  const handleUploadAvatar = async (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleUploadAvatar = async (
+    event: React.ChangeEvent<HTMLInputElement>
+  ) => {
     setAvatarMessage('');
     setAvatarError('');
 
@@ -300,6 +330,7 @@ export default function ProfilePage() {
         avatar: publicUrl,
       } as any);
 
+      setAvatarLoadError(false);
       setAvatarMessage('Avatar actualizado correctamente.');
     } catch (err: any) {
       setAvatarError(
@@ -403,12 +434,6 @@ export default function ProfilePage() {
     return <Badge className="bg-slate-100 text-slate-800">Plan Gratis</Badge>;
   };
 
-  const getAccountTypeLabel = () => {
-    if (accountType === 'seller') return 'Vendedor';
-    if (accountType === 'both') return 'Comprador + Vendedor';
-    return 'Comprador';
-  };
-
   if (isLoading || !isAuthenticated || !user) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-slate-50">
@@ -425,23 +450,28 @@ export default function ProfilePage() {
       <Header />
 
       <div className="container mx-auto px-4 py-8">
-        <Card className="mb-8 overflow-hidden">
+        <Card className="mb-8 overflow-hidden rounded-2xl">
           <CardContent className="p-0">
-            <div className="h-28 bg-gradient-to-r from-primary to-blue-700" />
+            <div className="h-28 bg-gradient-to-r from-primary via-blue-700 to-blue-800" />
 
             <div className="px-6 pb-6">
-              <div className="-mt-16 flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
-                <div className="flex flex-col gap-4 sm:flex-row sm:items-end">
-                  <div className="relative">
-                    <div className="flex h-32 w-32 items-center justify-center overflow-hidden rounded-full border-4 border-white bg-slate-100 shadow-lg">
-                      {isValidAvatarUrl ? (
+              <div className="-mt-14 flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
+                <div className="flex flex-col gap-5 sm:flex-row sm:items-end">
+                  <div className="relative h-32 w-32 flex-shrink-0">
+                    <div className="flex h-32 w-32 items-center justify-center overflow-hidden rounded-full border-4 border-white bg-slate-100 shadow-xl">
+                      {shouldShowImageAvatar ? (
                         <img
-                          src={avatarUrl}
-                          alt={displayName}
-                          className="h-full w-full object-cover"
+                          src={safeAvatarUrl}
+                          alt="Avatar del usuario"
+                          className="block h-full w-full object-cover"
+                          onError={() => setAvatarLoadError(true)}
                         />
                       ) : (
-                        <span className="text-6xl">{getAvatarEmoji()}</span>
+                        <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-slate-100 to-slate-200">
+                          <span className="select-none text-6xl leading-none">
+                            {getAvatarEmoji(gender)}
+                          </span>
+                        </div>
                       )}
                     </div>
 
@@ -469,30 +499,35 @@ export default function ProfilePage() {
 
                   <div className="pb-2">
                     <div className="mb-3 flex flex-wrap items-center gap-2">
-                      <h1 className="text-3xl font-bold">{displayName}</h1>
+                      <h1 className="text-3xl font-bold leading-tight text-foreground">
+                        {displayName}
+                      </h1>
                       {getVerificationBadge()}
                       {getPlanBadge()}
                     </div>
 
                     <div className="mb-3 flex flex-wrap gap-2">
-                      <Badge variant="outline" className="gap-1">
+                      <Badge variant="outline" className="gap-1 bg-white">
                         <MapPin className="h-3 w-3" />
                         {displayCity}
                       </Badge>
 
-                      <Badge variant="outline" className="gap-1">
+                      <Badge variant="outline" className="gap-1 bg-white">
                         <User className="h-3 w-3" />
-                        {getAccountTypeLabel()}
+                        {getAccountTypeLabel(accountType)}
                       </Badge>
 
-                      <Badge variant="outline" className="gap-1">
+                      <Badge variant="outline" className="gap-1 bg-white">
                         <Calendar className="h-3 w-3" />
                         Miembro desde{' '}
                         {profile?.created_at
-                          ? new Date(profile.created_at).toLocaleDateString('es-PE', {
-                              month: 'long',
-                              year: 'numeric',
-                            })
+                          ? new Date(profile.created_at).toLocaleDateString(
+                              'es-PE',
+                              {
+                                month: 'long',
+                                year: 'numeric',
+                              }
+                            )
                           : currentUser?.joinDate || '2026'}
                       </Badge>
                     </div>
@@ -512,6 +547,7 @@ export default function ProfilePage() {
                     variant="outline"
                     onClick={handleSelectAvatar}
                     disabled={isUploadingAvatar}
+                    className="bg-white"
                   >
                     <Upload className="mr-2 h-4 w-4" />
                     Cambiar avatar
@@ -553,7 +589,11 @@ export default function ProfilePage() {
                 </div>
 
                 {!isEditingBio && (
-                  <Button variant="outline" size="sm" onClick={() => setIsEditingBio(true)}>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setIsEditingBio(true)}
+                  >
                     <Edit3 className="mr-2 h-4 w-4" />
                     Editar
                   </Button>
@@ -641,12 +681,16 @@ export default function ProfilePage() {
 
             <CardContent className="space-y-4">
               <div className="rounded-xl bg-slate-100 p-4">
-                <p className="mb-1 text-sm text-muted-foreground">Estado de identidad</p>
+                <p className="mb-1 text-sm text-muted-foreground">
+                  Estado de identidad
+                </p>
                 <div>{getVerificationBadge()}</div>
               </div>
 
               <div className="rounded-xl bg-slate-100 p-4">
-                <p className="mb-1 text-sm text-muted-foreground">Correo registrado</p>
+                <p className="mb-1 text-sm text-muted-foreground">
+                  Correo registrado
+                </p>
                 <p className="flex items-center gap-2 break-all text-sm font-medium">
                   <Mail className="h-4 w-4" />
                   {displayEmail}
@@ -670,7 +714,9 @@ export default function ProfilePage() {
           <Card>
             <CardHeader>
               <CardTitle>Publicaciones disponibles</CardTitle>
-              <CardDescription>Controla cuántos artículos puedes publicar.</CardDescription>
+              <CardDescription>
+                Controla cuántos artículos puedes publicar.
+              </CardDescription>
             </CardHeader>
 
             <CardContent className="space-y-4">
@@ -768,9 +814,7 @@ export default function ProfilePage() {
         <Card className="mb-8">
           <CardHeader>
             <CardTitle>Mis productos</CardTitle>
-            <CardDescription>
-              Productos publicados desde tu cuenta.
-            </CardDescription>
+            <CardDescription>Productos publicados desde tu cuenta.</CardDescription>
           </CardHeader>
 
           <CardContent>
