@@ -190,7 +190,6 @@ export default function ProductDetailPage() {
 
   const product = useMemo(() => {
     const normalizedMockProducts = mockProducts.map(normalizeProduct);
-
     const allProducts = [...clientProducts, ...normalizedMockProducts];
 
     const uniqueProducts = new Map<string, ProductItem>();
@@ -339,7 +338,7 @@ export default function ProductDetailPage() {
     <div className="min-h-screen bg-slate-50">
       <Header />
 
-      <main className="mx-auto max-w-7xl px-4 py-8">
+      <main className="mx-auto max-w-6xl px-4 py-8">
         <div className="mb-6">
           <Link href="/products">
             <Button variant="outline" size="sm">
@@ -369,15 +368,15 @@ export default function ProductDetailPage() {
           </div>
         )}
 
-        <section className="grid gap-8 lg:grid-cols-[1.1fr_0.9fr]">
+        <section className="grid gap-8 lg:grid-cols-[0.95fr_1fr]">
           <div className="space-y-4">
             <div className="overflow-hidden rounded-2xl border bg-white shadow-sm">
-              <div className="aspect-[4/3] bg-slate-100">
+              <div className="flex h-[360px] w-full items-center justify-center bg-white p-4 md:h-[420px]">
                 {selectedImage ? (
                   <img
                     src={selectedImage}
                     alt={product.title || product.name || 'Producto'}
-                    className="h-full w-full object-cover"
+                    className="max-h-full max-w-full rounded-xl object-contain"
                   />
                 ) : (
                   <div className="flex h-full w-full flex-col items-center justify-center text-slate-400">
@@ -395,7 +394,7 @@ export default function ProductDetailPage() {
                     key={`${image}-${index}`}
                     type="button"
                     onClick={() => setSelectedImage(image)}
-                    className={`overflow-hidden rounded-xl border bg-white p-1 transition ${
+                    className={`flex h-28 items-center justify-center overflow-hidden rounded-xl border bg-white p-2 transition md:h-32 ${
                       selectedImage === image
                         ? 'border-primary ring-2 ring-primary/20'
                         : 'hover:border-primary'
@@ -404,7 +403,7 @@ export default function ProductDetailPage() {
                     <img
                       src={image}
                       alt={`Imagen ${index + 1}`}
-                      className="h-32 w-full rounded-lg object-cover"
+                      className="max-h-full max-w-full rounded-lg object-contain"
                     />
                   </button>
                 ))}
