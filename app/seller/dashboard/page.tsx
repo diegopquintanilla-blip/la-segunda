@@ -60,6 +60,7 @@ type ProductItem = {
   price: number;
   city?: string;
   images?: string[];
+  image?: string;
   status?: string;
   views?: number;
   favoriteCount?: number;
@@ -100,6 +101,22 @@ const PLAN_CONFIG: Record<PlanType, PlanConfig> = {
 
 const DEFAULT_PRODUCT_IMAGE = 'https://placehold.co/600x600?text=La+Segunda';
 
+function readFileAsBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+
+    reader.onload = () => {
+      resolve(reader.result as string);
+    };
+
+    reader.onerror = () => {
+      reject(new Error('No se pudo leer la imagen.'));
+    };
+
+    reader.readAsDataURL(file);
+  });
+}
+
 export default function SellerDashboardPage() {
   const { user, isAuthenticated } = useAuth();
   const router = useRouter();
@@ -119,8 +136,9 @@ export default function SellerDashboardPage() {
   const [productCondition, setProductCondition] = useState('Bueno');
   const [productPrice, setProductPrice] = useState('');
   const [productCity, setProductCity] = useState('');
-  const [productImage, setProductImage] = useState('');
-  const [productImageName, setProductImageName] = useState('');
+
+  const [productImages, setProductImages] = useState<string[]>([]);
+  const [productImageNames, setProductImageNames] = useState<string[]>([]);
 
   useEffect(() => {
     if (!isAuthenticated) {
@@ -254,12 +272,19 @@ export default function SellerDashboardPage() {
     setProductCondition('Bueno');
     setProductPrice('');
     setProductCity('');
-    setProductImage('');
-    setProductImageName('');
+    setProductImages([]);
+    setProductImageNames([]);
     setEditingProduct(null);
   };
 
   const fillFormForEdit = (product: ProductItem) => {
+    const existingImages =
+      product.images && product.images.length > 0
+        ? product.images.slice(0, 2)
+        : product.image
+          ? [product.image]
+          : [];
+
     setEditingProduct(product);
     setProductTitle(product.title || '');
     setProductDescription(product.description || '');
@@ -267,46 +292,66 @@ export default function SellerDashboardPage() {
     setProductCondition(product.condition || 'Bueno');
     setProductPrice(String(product.price || ''));
     setProductCity(product.city || '');
-    setProductImage(product.images?.[0] || '');
-    setProductImageName(product.images?.[0] ? 'Imagen actual del producto' : '');
+    setProductImages(existingImages);
+    setProductImageNames(
+      existingImages.map((_, index) => `Imagen actual ${index + 1}`)
+    );
     setShowForm(true);
     setOpenActionsId(null);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  const handleLocalImageUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleLocalImagesUpload = async (
+    event: React.ChangeEvent<HTMLInputElement>
+  ) => {
     setFormError('');
 
-    const file = event.target.files?.[0];
+    const files = Array.from(event.target.files || []);
 
-    if (!file) return;
+    if (files.length === 0) return;
 
-    if (!file.type.startsWith('image/')) {
+    if (files.length > 2) {
+      setFormError('Solo puedes adjuntar hasta 2 imágenes por producto.');
+      event.target.value = '';
+      return;
+    }
+
+    const invalidFile = files.find((file) => !file.type.startsWith('image/'));
+
+    if (invalidFile) {
       setFormError('Solo puedes adjuntar archivos de imagen.');
       event.target.value = '';
       return;
     }
 
-    if (file.size > 5 * 1024 * 1024) {
-      setFormError('La imagen no debe superar los 5 MB.');
+    const oversizedFile = files.find((file) => file.size > 5 * 1024 * 1024);
+
+    if (oversizedFile) {
+      setFormError('Cada imagen no debe superar los 5 MB.');
       event.target.value = '';
       return;
     }
 
-    const reader = new FileReader();
+    try {
+      const base64Images = await Promise.all(files.map(readFileAsBase64));
 
-    reader.onload = () => {
-      const imageBase64 = reader.result as string;
+      setProductImages(base64Images.slice(0, 2));
+      setProductImageNames(files.map((file) => file.name).slice(0, 2));
+    } catch {
+      setFormError('No se pudieron leer las imágenes. Intenta nuevamente.');
+    } finally {
+      event.target.value = '';
+    }
+  };
 
-      setProductImage(imageBase64);
-      setProductImageName(file.name);
-    };
+  const handleRemoveImage = (indexToRemove: number) => {
+    setProductImages((currentImages) =>
+      currentImages.filter((_, index) => index !== indexToRemove)
+    );
 
-    reader.onerror = () => {
-      setFormError('No se pudo leer la imagen. Intenta con otro archivo.');
-    };
-
-    reader.readAsDataURL(file);
+    setProductImageNames((currentNames) =>
+      currentNames.filter((_, index) => index !== indexToRemove)
+    );
   };
 
   const handleCreateOrUpdateProduct = (event: React.FormEvent) => {
@@ -339,7 +384,8 @@ export default function SellerDashboardPage() {
       return;
     }
 
-    const finalImage = productImage || DEFAULT_PRODUCT_IMAGE;
+    const finalImages =
+      productImages.length > 0 ? productImages.slice(0, 2) : [DEFAULT_PRODUCT_IMAGE];
 
     if (editingProduct) {
       const updatedProducts = localProducts.map((product) => {
@@ -353,7 +399,8 @@ export default function SellerDashboardPage() {
           condition: productCondition,
           price: Number(productPrice),
           city: productCity.trim(),
-          images: [finalImage],
+          images: finalImages,
+          image: finalImages[0],
         };
       });
 
@@ -373,7 +420,8 @@ export default function SellerDashboardPage() {
       condition: productCondition,
       price: Number(productPrice),
       city: productCity.trim(),
-      images: [finalImage],
+      images: finalImages,
+      image: finalImages[0],
       status: 'active',
       views: 0,
       favoriteCount: 0,
@@ -415,7 +463,11 @@ export default function SellerDashboardPage() {
   };
 
   const getProductImage = (product: ProductItem) => {
-    return product.images?.[0] || 'https://placehold.co/100x100?text=La+Segunda';
+    return (
+      product.images?.[0] ||
+      product.image ||
+      'https://placehold.co/100x100?text=La+Segunda'
+    );
   };
 
   const getStatusLabel = (status?: string) => {
@@ -683,53 +735,82 @@ export default function SellerDashboardPage() {
                 <div className="space-y-3 rounded-xl border border-dashed bg-slate-50 p-4">
                   <div>
                     <label className="text-sm font-medium">
-                      Adjuntar imagen del producto
+                      Adjuntar imágenes del producto
                     </label>
                     <p className="mt-1 text-xs text-muted-foreground">
-                      Selecciona una imagen desde tu computadora. Formatos permitidos:
-                      JPG, PNG o WEBP. Tamaño máximo: 5 MB.
+                      Puedes adjuntar hasta 2 imágenes desde tu computadora.
+                      Formatos permitidos: JPG, PNG o WEBP. Tamaño máximo: 5 MB
+                      por imagen.
                     </p>
                   </div>
 
                   <label className="flex cursor-pointer flex-col items-center justify-center rounded-xl border bg-white p-6 text-center transition hover:bg-slate-100">
                     <Upload className="mb-2 h-8 w-8 text-primary" />
                     <span className="text-sm font-semibold">
-                      Haz clic para adjuntar imagen
+                      Haz clic para adjuntar hasta 2 imágenes
                     </span>
                     <span className="mt-1 text-xs text-muted-foreground">
-                      La imagen se guardará junto al producto
+                      Selecciona una o dos imágenes del producto
                     </span>
 
                     <input
                       type="file"
                       accept="image/png,image/jpeg,image/jpg,image/webp"
-                      onChange={handleLocalImageUpload}
+                      multiple
+                      onChange={handleLocalImagesUpload}
                       className="hidden"
                     />
                   </label>
 
-                  {productImageName && (
-                    <div className="rounded-lg border bg-white px-3 py-2 text-sm text-slate-700">
-                      Archivo seleccionado: <strong>{productImageName}</strong>
+                  {productImageNames.length > 0 && (
+                    <div className="space-y-2">
+                      {productImageNames.map((imageName, index) => (
+                        <div
+                          key={`${imageName}-${index}`}
+                          className="flex items-center justify-between rounded-lg border bg-white px-3 py-2 text-sm text-slate-700"
+                        >
+                          <span>
+                            Imagen {index + 1}: <strong>{imageName}</strong>
+                          </span>
+
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveImage(index)}
+                            className="text-xs font-semibold text-red-600 hover:text-red-700"
+                          >
+                            Quitar
+                          </button>
+                        </div>
+                      ))}
                     </div>
                   )}
 
-                  {productImage ? (
+                  {productImages.length > 0 ? (
                     <div className="rounded-xl border bg-white p-3">
-                      <p className="mb-2 text-xs font-medium text-muted-foreground">
+                      <p className="mb-3 text-xs font-medium text-muted-foreground">
                         Vista previa:
                       </p>
 
-                      <img
-                        src={productImage}
-                        alt="Vista previa del producto"
-                        className="h-40 w-40 rounded-lg border object-cover"
-                      />
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        {productImages.map((image, index) => (
+                          <div key={`${image}-${index}`} className="relative">
+                            <img
+                              src={image}
+                              alt={`Vista previa ${index + 1}`}
+                              className="h-40 w-full rounded-lg border object-cover"
+                            />
+
+                            <span className="absolute left-2 top-2 rounded-full bg-black/70 px-2 py-1 text-xs font-semibold text-white">
+                              Imagen {index + 1}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
                     </div>
                   ) : (
                     <div className="flex items-center gap-2 rounded-lg border bg-white px-3 py-2 text-sm text-muted-foreground">
                       <ImageIcon className="h-4 w-4" />
-                      Aún no has adjuntado una imagen.
+                      Aún no has adjuntado imágenes.
                     </div>
                   )}
                 </div>
