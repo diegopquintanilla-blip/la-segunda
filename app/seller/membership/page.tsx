@@ -11,6 +11,7 @@ import {
   CardTitle,
 } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { Input } from '@/components/ui/input';
 import {
   Check,
   X,
@@ -22,6 +23,9 @@ import {
   Loader2,
   Star,
   TrendingUp,
+  CreditCard,
+  Lock,
+  XCircle,
 } from 'lucide-react';
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
@@ -133,6 +137,15 @@ export default function MembershipPage() {
   const [successMessage, setSuccessMessage] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
 
+  const [selectedPlan, setSelectedPlan] = useState<MembershipPlan | null>(null);
+  const [showPaymentModal, setShowPaymentModal] = useState(false);
+
+  const [cardName, setCardName] = useState('');
+  const [cardNumber, setCardNumber] = useState('');
+  const [cardExpiry, setCardExpiry] = useState('');
+  const [cardCvv, setCardCvv] = useState('');
+  const [paymentError, setPaymentError] = useState('');
+
   useEffect(() => {
     if (!isAuthenticated || !user) {
       router.push('/auth/login');
@@ -171,11 +184,10 @@ export default function MembershipPage() {
     if (typeof window === 'undefined') return;
 
     const possibleUserKeys = [
-      'la-segunda-user',
-      'user',
       'currentUser',
-      'auth-user',
+      'la-segunda-user',
       'la_segunda_user',
+      'auth-user',
     ];
 
     let saved = false;
@@ -201,7 +213,7 @@ export default function MembershipPage() {
 
     if (!saved) {
       localStorage.setItem(
-        'la-segunda-user',
+        'currentUser',
         JSON.stringify({
           ...currentUser,
           ...updates,
@@ -210,62 +222,97 @@ export default function MembershipPage() {
     }
   };
 
-  const handleActivatePlan = async (planId: PlanId) => {
+  const resetPaymentForm = () => {
+    setCardName('');
+    setCardNumber('');
+    setCardExpiry('');
+    setCardCvv('');
+    setPaymentError('');
+  };
+
+  const formatCardNumber = (value: string) => {
+    const numbersOnly = value.replace(/\D/g, '').slice(0, 16);
+    return numbersOnly.replace(/(.{4})/g, '$1 ').trim();
+  };
+
+  const formatExpiry = (value: string) => {
+    const numbersOnly = value.replace(/\D/g, '').slice(0, 4);
+
+    if (numbersOnly.length <= 2) {
+      return numbersOnly;
+    }
+
+    return `${numbersOnly.slice(0, 2)}/${numbersOnly.slice(2)}`;
+  };
+
+  const validatePaymentForm = () => {
+    const cleanCardNumber = cardNumber.replace(/\s/g, '');
+
+    if (!cardName.trim()) {
+      return 'Ingresa el nombre del titular de la tarjeta.';
+    }
+
+    if (cleanCardNumber.length < 16) {
+      return 'Ingresa un número de tarjeta válido de 16 dígitos.';
+    }
+
+    if (!cardExpiry || cardExpiry.length < 5) {
+      return 'Ingresa la fecha de vencimiento en formato MM/AA.';
+    }
+
+    if (!cardCvv || cardCvv.length < 3) {
+      return 'Ingresa un CVV válido.';
+    }
+
+    return '';
+  };
+
+  const activatePlan = async (plan: MembershipPlan) => {
     setErrorMessage('');
     setSuccessMessage('');
-    setIsLoading(planId);
-
-    const selectedPlan = membershipPlans.find((plan) => plan.id === planId);
-
-    if (!selectedPlan) {
-      setIsLoading(null);
-      setErrorMessage('No se encontró el plan seleccionado.');
-      return;
-    }
+    setIsLoading(plan.id);
 
     try {
       const updates = {
-        membershipType: planId,
-        membership: planId,
-        plan: planId,
+        membershipType: plan.id,
+        membership: plan.id,
+        plan: plan.id,
         sellerBadge:
-          planId === 'free'
+          plan.id === 'free'
             ? 'standard'
-            : planId === 'plus'
+            : plan.id === 'plus'
               ? 'plus'
               : 'premium',
         isSeller: true,
         accountType:
-          currentUser.accountType === 'buyer' || currentUser.accountType === 'comprador'
+          currentUser.accountType === 'buyer' ||
+          currentUser.accountType === 'comprador'
             ? 'both'
             : currentUser.accountType || 'both',
-
-        /*
-          MVP:
-          Se activa desbloqueo simulado para que puedas probar el flujo comercial.
-          En producción, la verificación documental y el pago real deben manejarse por separado.
-        */
         verificationStatus:
-          planId === 'free'
+          plan.id === 'free'
             ? currentUser.verificationStatus || 'pending'
-            : currentUser.verificationStatus === 'verified'
-              ? 'verified'
-              : 'verified',
-
-        subscriptionStatus: planId === 'free' ? 'free' : 'active',
+            : 'verified',
+        subscriptionStatus: plan.id === 'free' ? 'free' : 'active',
         subscriptionStartedAt: new Date().toISOString(),
-        commissionRate: selectedPlan.commissionRate,
-        monthlyListingLimit: selectedPlan.listingLimit,
+        commissionRate: plan.commissionRate,
+        monthlyListingLimit: plan.listingLimit,
       };
+
+      await new Promise((resolve) => setTimeout(resolve, 900));
 
       updateUser(updates as any);
       saveUserInLocalStorage(updates);
 
       setSuccessMessage(
-        planId === 'free'
+        plan.id === 'free'
           ? 'Plan Gratis activado correctamente.'
-          : `Plan ${selectedPlan.name} activado correctamente. Redirigiendo al panel...`
+          : `Pago aprobado. ${plan.name} activado correctamente. Redirigiendo al panel...`
       );
+
+      setShowPaymentModal(false);
+      setSelectedPlan(null);
+      resetPaymentForm();
 
       setTimeout(() => {
         router.push('/seller/dashboard');
@@ -275,6 +322,42 @@ export default function MembershipPage() {
     } finally {
       setIsLoading(null);
     }
+  };
+
+  const handlePlanClick = async (plan: MembershipPlan) => {
+    setErrorMessage('');
+    setSuccessMessage('');
+
+    if (plan.id === currentPlanId) {
+      return;
+    }
+
+    if (plan.id === 'free') {
+      await activatePlan(plan);
+      return;
+    }
+
+    setSelectedPlan(plan);
+    setShowPaymentModal(true);
+  };
+
+  const handlePaymentSubmit = async (event: React.FormEvent) => {
+    event.preventDefault();
+    setPaymentError('');
+
+    if (!selectedPlan) {
+      setPaymentError('No se seleccionó ningún plan.');
+      return;
+    }
+
+    const validationError = validatePaymentForm();
+
+    if (validationError) {
+      setPaymentError(validationError);
+      return;
+    }
+
+    await activatePlan(selectedPlan);
   };
 
   const getButtonLabel = (plan: MembershipPlan) => {
@@ -411,17 +494,22 @@ export default function MembershipPage() {
                     }`}
                     variant={plan.id === 'free' ? 'outline' : 'default'}
                     disabled={isCurrentPlan || isLoading !== null}
-                    onClick={() => handleActivatePlan(plan.id)}
+                    onClick={() => handlePlanClick(plan)}
                   >
                     {isActivating ? (
                       <>
                         <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        Activando...
+                        Procesando...
                       </>
                     ) : isCurrentPlan ? (
                       'Plan actual'
-                    ) : (
+                    ) : plan.id === 'free' ? (
                       getButtonLabel(plan)
+                    ) : (
+                      <>
+                        <CreditCard className="mr-2 h-4 w-4" />
+                        {getButtonLabel(plan)}
+                      </>
                     )}
                   </Button>
                 </CardContent>
@@ -553,6 +641,158 @@ export default function MembershipPage() {
           </Card>
         </div>
       </div>
+
+      {showPaymentModal && selectedPlan && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
+          <div className="w-full max-w-lg rounded-2xl bg-white shadow-2xl">
+            <div className="flex items-center justify-between border-b p-5">
+              <div>
+                <h2 className="text-xl font-bold">Pago de membresía</h2>
+                <p className="text-sm text-muted-foreground">
+                  Estás activando {selectedPlan.name}
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setShowPaymentModal(false);
+                  setSelectedPlan(null);
+                  resetPaymentForm();
+                }}
+                className="rounded-full p-2 hover:bg-slate-100"
+              >
+                <XCircle className="h-5 w-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handlePaymentSubmit} className="space-y-5 p-5">
+              <div className="rounded-xl border bg-slate-50 p-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="font-semibold">{selectedPlan.name}</p>
+                    <p className="text-sm text-muted-foreground">
+                      Membresía mensual
+                    </p>
+                  </div>
+
+                  <div className="text-right">
+                    <p className="text-2xl font-bold text-primary">
+                      {selectedPlan.price}
+                    </p>
+                    <p className="text-xs text-muted-foreground">/ mes</p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+                Este es un pago simulado para MVP. No se guardan datos reales de
+                tarjeta. Para producción usa Stripe, Mercado Pago o una pasarela
+                certificada.
+              </div>
+
+              {paymentError && (
+                <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+                  {paymentError}
+                </div>
+              )}
+
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Nombre del titular</label>
+                <Input
+                  value={cardName}
+                  onChange={(event) => setCardName(event.target.value)}
+                  placeholder="Ejemplo: Diego Palomino"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Número de tarjeta</label>
+                <div className="relative">
+                  <CreditCard className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    value={cardNumber}
+                    onChange={(event) =>
+                      setCardNumber(formatCardNumber(event.target.value))
+                    }
+                    placeholder="4242 4242 4242 4242"
+                    className="pl-9"
+                    inputMode="numeric"
+                    maxLength={19}
+                  />
+                </div>
+              </div>
+
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Vencimiento</label>
+                  <Input
+                    value={cardExpiry}
+                    onChange={(event) =>
+                      setCardExpiry(formatExpiry(event.target.value))
+                    }
+                    placeholder="MM/AA"
+                    inputMode="numeric"
+                    maxLength={5}
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">CVV</label>
+                  <Input
+                    value={cardCvv}
+                    onChange={(event) =>
+                      setCardCvv(event.target.value.replace(/\D/g, '').slice(0, 4))
+                    }
+                    placeholder="123"
+                    inputMode="numeric"
+                    maxLength={4}
+                    type="password"
+                  />
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 rounded-xl bg-slate-100 p-3 text-sm text-slate-700">
+                <Lock className="h-4 w-4" />
+                Tus datos no se almacenan en este MVP.
+              </div>
+
+              <div className="flex flex-col gap-3 sm:flex-row">
+                <Button
+                  type="submit"
+                  className="w-full"
+                  disabled={isLoading !== null}
+                >
+                  {isLoading === selectedPlan.id ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Procesando pago...
+                    </>
+                  ) : (
+                    <>
+                      <CreditCard className="mr-2 h-4 w-4" />
+                      Pagar {selectedPlan.price}
+                    </>
+                  )}
+                </Button>
+
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="w-full"
+                  onClick={() => {
+                    setShowPaymentModal(false);
+                    setSelectedPlan(null);
+                    resetPaymentForm();
+                  }}
+                >
+                  Cancelar
+                </Button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
