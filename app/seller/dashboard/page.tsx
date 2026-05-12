@@ -25,7 +25,6 @@ import {
   Line,
 } from 'recharts';
 import {
-  TrendingUp,
   ShoppingBag,
   Eye,
   Heart,
@@ -36,12 +35,34 @@ import {
   PackagePlus,
   AlertTriangle,
   CheckCircle,
+  Edit3,
+  Trash2,
+  BadgeCheck,
+  X,
 } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useEffect, useMemo, useState } from 'react';
 
 type PlanType = 'free' | 'plus' | 'premium';
+
+type ProductItem = {
+  id: string;
+  sellerId?: string;
+  userId?: string;
+  ownerId?: string;
+  title: string;
+  description?: string;
+  category?: string;
+  condition?: string;
+  price: number;
+  city?: string;
+  images?: string[];
+  status?: string;
+  views?: number;
+  favoriteCount?: number;
+  createdAt?: string;
+};
 
 type PlanConfig = {
   name: string;
@@ -79,10 +100,14 @@ export default function SellerDashboardPage() {
   const { user, isAuthenticated } = useAuth();
   const router = useRouter();
 
-  const [localProducts, setLocalProducts] = useState<any[]>([]);
+  const [localProducts, setLocalProducts] = useState<ProductItem[]>([]);
   const [showForm, setShowForm] = useState(false);
   const [formError, setFormError] = useState('');
   const [formSuccess, setFormSuccess] = useState('');
+
+  const [openActionsId, setOpenActionsId] = useState<string | null>(null);
+  const [editingProduct, setEditingProduct] = useState<ProductItem | null>(null);
+  const [deleteProduct, setDeleteProduct] = useState<ProductItem | null>(null);
 
   const [productTitle, setProductTitle] = useState('');
   const [productDescription, setProductDescription] = useState('');
@@ -147,9 +172,9 @@ export default function SellerDashboardPage() {
 
   const allProducts = useMemo(() => {
     const merged = [...mockProducts, ...localProducts];
-    const uniqueProducts = new Map();
+    const uniqueProducts = new Map<string, ProductItem>();
 
-    merged.forEach((product) => {
+    merged.forEach((product: any) => {
       if (product?.id) {
         uniqueProducts.set(product.id, product);
       }
@@ -188,7 +213,10 @@ export default function SellerDashboardPage() {
 
   const totalRevenue = sellerOrders.reduce((sum, order) => sum + order.amount, 0);
   const totalSales = sellerOrders.filter((order) => order.status === 'completed').length;
-  const totalViews = sellerProducts.reduce((sum: number, product: any) => sum + (product.views || 0), 0);
+  const totalViews = sellerProducts.reduce(
+    (sum: number, product: any) => sum + (product.views || 0),
+    0
+  );
   const totalFavorites = sellerProducts.reduce(
     (sum: number, product: any) => sum + (product.favoriteCount || 0),
     0
@@ -206,6 +234,14 @@ export default function SellerDashboardPage() {
     { month: 'Jun', sales: 0, revenue: 0 },
   ];
 
+  const saveProducts = (products: ProductItem[]) => {
+    setLocalProducts(products);
+
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('la-segunda-products', JSON.stringify(products));
+    }
+  };
+
   const resetForm = () => {
     setProductTitle('');
     setProductDescription('');
@@ -214,14 +250,29 @@ export default function SellerDashboardPage() {
     setProductPrice('');
     setProductCity('');
     setProductImage('');
+    setEditingProduct(null);
   };
 
-  const handleCreateProduct = (event: React.FormEvent) => {
+  const fillFormForEdit = (product: ProductItem) => {
+    setEditingProduct(product);
+    setProductTitle(product.title || '');
+    setProductDescription(product.description || '');
+    setProductCategory(product.category || 'Electrónica');
+    setProductCondition(product.condition || 'Bueno');
+    setProductPrice(String(product.price || ''));
+    setProductCity(product.city || '');
+    setProductImage(product.images?.[0] || '');
+    setShowForm(true);
+    setOpenActionsId(null);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const handleCreateOrUpdateProduct = (event: React.FormEvent) => {
     event.preventDefault();
     setFormError('');
     setFormSuccess('');
 
-    if (!canPublish) {
+    if (!editingProduct && !canPublish) {
       setFormError('Alcanzaste el límite de publicaciones de tu plan actual.');
       return;
     }
@@ -246,7 +297,33 @@ export default function SellerDashboardPage() {
       return;
     }
 
-    const newProduct = {
+    if (editingProduct) {
+      const updatedProducts = localProducts.map((product) => {
+        if (product.id !== editingProduct.id) return product;
+
+        return {
+          ...product,
+          title: productTitle.trim(),
+          description: productDescription.trim(),
+          category: productCategory,
+          condition: productCondition,
+          price: Number(productPrice),
+          city: productCity.trim(),
+          images: [
+            productImage.trim() ||
+              'https://placehold.co/600x600?text=La+Segunda',
+          ],
+        };
+      });
+
+      saveProducts(updatedProducts);
+      setFormSuccess('Producto actualizado correctamente.');
+      setShowForm(false);
+      resetForm();
+      return;
+    }
+
+    const newProduct: ProductItem = {
       id: `local-${Date.now()}`,
       sellerId: user.id,
       title: productTitle.trim(),
@@ -267,18 +344,53 @@ export default function SellerDashboardPage() {
 
     const updatedProducts = [...localProducts, newProduct];
 
-    setLocalProducts(updatedProducts);
-
-    if (typeof window !== 'undefined') {
-      localStorage.setItem(
-        'la-segunda-products',
-        JSON.stringify(updatedProducts)
-      );
-    }
-
+    saveProducts(updatedProducts);
     setFormSuccess('Producto publicado correctamente.');
     setShowForm(false);
     resetForm();
+  };
+
+  const handleMarkAsSold = (productId: string) => {
+    const updatedProducts = localProducts.map((product) => {
+      if (product.id !== productId) return product;
+
+      return {
+        ...product,
+        status: 'sold',
+      };
+    });
+
+    saveProducts(updatedProducts);
+    setOpenActionsId(null);
+  };
+
+  const handleDeleteProduct = () => {
+    if (!deleteProduct) return;
+
+    const updatedProducts = localProducts.filter(
+      (product) => product.id !== deleteProduct.id
+    );
+
+    saveProducts(updatedProducts);
+    setDeleteProduct(null);
+    setOpenActionsId(null);
+  };
+
+  const getProductImage = (product: ProductItem) => {
+    return product.images?.[0] || 'https://placehold.co/100x100?text=La+Segunda';
+  };
+
+  const getStatusLabel = (status?: string) => {
+    if (status === 'sold') return 'Vendido';
+    if (status === 'reserved') return 'Reservado';
+    if (status === 'pending') return 'Pendiente';
+    return 'Activo';
+  };
+
+  const getStatusVariant = (status?: string) => {
+    if (status === 'sold') return 'secondary';
+    if (status === 'pending') return 'outline';
+    return 'default';
   };
 
   return (
@@ -286,7 +398,6 @@ export default function SellerDashboardPage() {
       <Header />
 
       <div className="container mx-auto px-4 py-8">
-        {/* HEADER */}
         <div className="mb-8 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div>
             <h1 className="text-3xl font-bold">Panel de publicaciones</h1>
@@ -296,7 +407,12 @@ export default function SellerDashboardPage() {
           </div>
 
           {canPublish ? (
-            <Button onClick={() => setShowForm(!showForm)}>
+            <Button
+              onClick={() => {
+                resetForm();
+                setShowForm(!showForm);
+              }}
+            >
               <Plus className="mr-2 h-4 w-4" />
               Publicar artículo
             </Button>
@@ -310,7 +426,6 @@ export default function SellerDashboardPage() {
           )}
         </div>
 
-        {/* MEMBERSHIP LIMIT CARD */}
         <Card className="mb-8 border-2">
           <CardHeader>
             <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
@@ -398,8 +513,7 @@ export default function SellerDashboardPage() {
 
                 <p className="mb-4 text-sm text-amber-800">
                   Para continuar publicando artículos en La Segunda, debes activar una
-                  membresía Plus o Premium. Este bloqueo permite monetizar la plataforma
-                  mediante membresías.
+                  membresía Plus o Premium.
                 </p>
 
                 <Link href="/seller/membership">
@@ -410,33 +524,35 @@ export default function SellerDashboardPage() {
                 </Link>
               </div>
             )}
-
-            {canPublish && (
-              <div className="flex flex-col gap-3 sm:flex-row">
-                <Button onClick={() => setShowForm(!showForm)}>
-                  <Plus className="mr-2 h-4 w-4" />
-                  Publicar nuevo artículo
-                </Button>
-
-                <Link href="/seller/membership">
-                  <Button variant="outline">
-                    <Crown className="mr-2 h-4 w-4" />
-                    Mejorar plan
-                  </Button>
-                </Link>
-              </div>
-            )}
           </CardContent>
         </Card>
 
-        {/* PRODUCT FORM */}
-        {showForm && canPublish && (
+        {showForm && (
           <Card className="mb-8">
             <CardHeader>
-              <CardTitle>Publicar nuevo artículo</CardTitle>
-              <CardDescription>
-                Completa la información del producto usado que deseas vender.
-              </CardDescription>
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <CardTitle>
+                    {editingProduct ? 'Editar producto' : 'Publicar nuevo artículo'}
+                  </CardTitle>
+                  <CardDescription>
+                    {editingProduct
+                      ? 'Actualiza la información del producto publicado.'
+                      : 'Completa la información del producto usado que deseas vender.'}
+                  </CardDescription>
+                </div>
+
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    setShowForm(false);
+                    resetForm();
+                  }}
+                >
+                  <X className="h-4 w-4" />
+                </Button>
+              </div>
             </CardHeader>
 
             <CardContent>
@@ -452,7 +568,7 @@ export default function SellerDashboardPage() {
                 </div>
               )}
 
-              <form onSubmit={handleCreateProduct} className="space-y-4">
+              <form onSubmit={handleCreateOrUpdateProduct} className="space-y-4">
                 <div className="grid gap-4 md:grid-cols-2">
                   <div className="space-y-2">
                     <label className="text-sm font-medium">Nombre del producto</label>
@@ -538,13 +654,16 @@ export default function SellerDashboardPage() {
                 <div className="flex flex-col gap-3 sm:flex-row">
                   <Button type="submit">
                     <CheckCircle className="mr-2 h-4 w-4" />
-                    Publicar producto
+                    {editingProduct ? 'Guardar cambios' : 'Publicar producto'}
                   </Button>
 
                   <Button
                     type="button"
                     variant="outline"
-                    onClick={() => setShowForm(false)}
+                    onClick={() => {
+                      setShowForm(false);
+                      resetForm();
+                    }}
                   >
                     Cancelar
                   </Button>
@@ -554,7 +673,6 @@ export default function SellerDashboardPage() {
           </Card>
         )}
 
-        {/* KEY STATS */}
         <div className="mb-8 grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
           <Card>
             <CardHeader className="pb-2">
@@ -617,7 +735,6 @@ export default function SellerDashboardPage() {
           </Card>
         </div>
 
-        {/* CHARTS */}
         <div className="mb-8 grid gap-6 lg:grid-cols-2">
           <Card>
             <CardHeader>
@@ -658,7 +775,6 @@ export default function SellerDashboardPage() {
           </Card>
         </div>
 
-        {/* MEMBERSHIP AND COMMISSION */}
         <div className="mb-8 grid gap-6 lg:grid-cols-2">
           <Card>
             <CardHeader>
@@ -718,7 +834,6 @@ export default function SellerDashboardPage() {
           </Card>
         </div>
 
-        {/* PRODUCTS */}
         <Card className="mb-8">
           <CardHeader className="flex flex-row items-center justify-between">
             <div>
@@ -729,7 +844,13 @@ export default function SellerDashboardPage() {
             </div>
 
             {canPublish ? (
-              <Button size="sm" onClick={() => setShowForm(true)}>
+              <Button
+                size="sm"
+                onClick={() => {
+                  resetForm();
+                  setShowForm(true);
+                }}
+              >
                 <Plus className="mr-1 h-4 w-4" />
                 Nuevo
               </Button>
@@ -759,12 +880,12 @@ export default function SellerDashboardPage() {
                   </thead>
 
                   <tbody>
-                    {sellerProducts.map((product: any) => (
+                    {sellerProducts.map((product: ProductItem) => (
                       <tr key={product.id} className="border-b hover:bg-muted/50">
                         <td className="p-2">
                           <div className="flex items-center gap-2">
                             <img
-                              src={product.images?.[0]}
+                              src={getProductImage(product)}
                               alt={product.title}
                               className="h-10 w-10 rounded object-cover"
                             />
@@ -793,27 +914,58 @@ export default function SellerDashboardPage() {
                         </td>
 
                         <td className="p-2">
-                          <Badge
-                            variant={
-                              product.status === 'active'
-                                ? 'default'
-                                : product.status === 'sold'
-                                  ? 'secondary'
-                                  : 'outline'
-                            }
-                          >
-                            {product.status === 'active'
-                              ? 'Activo'
-                              : product.status === 'sold'
-                                ? 'Vendido'
-                                : 'Pendiente'}
+                          <Badge variant={getStatusVariant(product.status) as any}>
+                            {getStatusLabel(product.status)}
                           </Badge>
                         </td>
 
-                        <td className="p-2">
-                          <button className="rounded p-1 hover:bg-muted">
+                        <td className="relative p-2">
+                          <Button
+                            type="button"
+                            size="icon"
+                            variant="ghost"
+                            onClick={() =>
+                              setOpenActionsId(
+                                openActionsId === product.id ? null : product.id
+                              )
+                            }
+                          >
                             <MoreVertical className="h-4 w-4" />
-                          </button>
+                          </Button>
+
+                          {openActionsId === product.id && (
+                            <div className="absolute right-2 top-10 z-20 w-52 overflow-hidden rounded-xl border bg-white shadow-lg">
+                              <button
+                                type="button"
+                                onClick={() => fillFormForEdit(product)}
+                                className="flex w-full items-center gap-2 px-4 py-3 text-left text-sm hover:bg-slate-100"
+                              >
+                                <Edit3 className="h-4 w-4 text-blue-600" />
+                                Editar
+                              </button>
+
+                              <button
+                                type="button"
+                                onClick={() => handleMarkAsSold(product.id)}
+                                className="flex w-full items-center gap-2 px-4 py-3 text-left text-sm hover:bg-slate-100"
+                              >
+                                <BadgeCheck className="h-4 w-4 text-green-600" />
+                                Marcar como vendido
+                              </button>
+
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setDeleteProduct(product);
+                                  setOpenActionsId(null);
+                                }}
+                                className="flex w-full items-center gap-2 px-4 py-3 text-left text-sm text-red-600 hover:bg-red-50"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                                Eliminar
+                              </button>
+                            </div>
+                          )}
                         </td>
                       </tr>
                     ))}
@@ -843,7 +995,6 @@ export default function SellerDashboardPage() {
           </CardContent>
         </Card>
 
-        {/* RECENT ORDERS */}
         <Card>
           <CardHeader>
             <CardTitle>Órdenes recientes</CardTitle>
@@ -901,6 +1052,46 @@ export default function SellerDashboardPage() {
           </CardContent>
         </Card>
       </div>
+
+      {deleteProduct && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
+          <Card className="w-full max-w-md">
+            <CardHeader>
+              <CardTitle>Eliminar producto</CardTitle>
+              <CardDescription>
+                Esta acción eliminará el producto de tus publicaciones.
+              </CardDescription>
+            </CardHeader>
+
+            <CardContent className="space-y-4">
+              <div className="rounded-xl border bg-slate-50 p-4">
+                <p className="font-semibold">{deleteProduct.title}</p>
+                <p className="text-sm text-muted-foreground">
+                  S/ {Number(deleteProduct.price || 0).toLocaleString()}
+                </p>
+              </div>
+
+              <div className="flex flex-col gap-3 sm:flex-row">
+                <Button
+                  className="w-full bg-red-600 hover:bg-red-700"
+                  onClick={handleDeleteProduct}
+                >
+                  <Trash2 className="mr-2 h-4 w-4" />
+                  Sí, eliminar
+                </Button>
+
+                <Button
+                  variant="outline"
+                  className="w-full"
+                  onClick={() => setDeleteProduct(null)}
+                >
+                  Cancelar
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
     </div>
   );
 }
