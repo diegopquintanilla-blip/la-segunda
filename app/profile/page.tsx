@@ -1,7 +1,10 @@
 'use client';
 
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { Header } from '@/components/header';
 import { useAuth } from '@/lib/auth-context';
+import { supabase } from '@/lib/supabase/client';
 import { Button } from '@/components/ui/button';
 import {
   Card,
@@ -11,793 +14,841 @@ import {
   CardTitle,
 } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Input } from '@/components/ui/input';
-import { mockProducts, mockReviews, mockUsers } from '@/lib/mock-data';
 import {
-  Star,
-  MapPin,
   Calendar,
-  Edit2,
+  Camera,
   CheckCircle,
-  PackagePlus,
-  Lock,
-  Crown,
-  MessageCircle,
+  Edit3,
   Heart,
-  ShoppingBag,
+  Loader2,
+  Lock,
+  Mail,
+  MapPin,
+  PackagePlus,
   ShieldCheck,
-  AlertTriangle,
-  ArrowRight,
-  Store,
-  TrendingUp,
+  Star,
+  Upload,
+  User,
+  AlertCircle,
 } from 'lucide-react';
-import { useEffect, useMemo, useState } from 'react';
-import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { getAccountTypeLabel } from '@/lib/avatar-utils';
 
-type MembershipPlan = {
-  id: 'free' | 'plus' | 'premium';
-  name: string;
-  limit: number;
-  commission: string;
-  price: string;
-  badgeClass: string;
+type ProfileData = {
+  user_id: string;
+  full_name: string | null;
+  username: string | null;
+  email: string | null;
+  phone: string | null;
+  city: string | null;
+  bio: string | null;
+  avatar_url: string | null;
+  gender: 'male' | 'female' | 'neutral' | null;
+  account_type: 'buyer' | 'seller' | 'both' | null;
+  verification_status: 'pending' | 'verified' | 'rejected' | null;
+  is_seller: boolean | null;
+  membership_type: string | null;
+  seller_badge: string | null;
+  subscription_status: string | null;
+  commission_rate: number | null;
+  monthly_listing_limit: number | null;
+  rating: number | null;
+  review_count: number | null;
+  created_at: string | null;
 };
 
-const plans: Record<string, MembershipPlan> = {
-  free: {
-    id: 'free',
-    name: 'Plan Gratis',
-    limit: 3,
-    commission: '8%',
-    price: 'S/ 0',
-    badgeClass: 'bg-slate-100 text-slate-800',
-  },
-  plus: {
-    id: 'plus',
-    name: 'La Segunda Plus',
-    limit: 20,
-    commission: '5%',
-    price: 'S/ 19.90',
-    badgeClass: 'bg-blue-100 text-blue-800',
-  },
-  premium: {
-    id: 'premium',
-    name: 'La Segunda Premium',
-    limit: Infinity,
-    commission: '2%',
-    price: 'S/ 49.90',
-    badgeClass: 'bg-amber-100 text-amber-800',
-  },
+type LocalProduct = {
+  id: string;
+  sellerId?: string;
+  userId?: string;
+  ownerId?: string;
+  title?: string;
+  name?: string;
+  price?: number;
+  city?: string;
+  status?: string;
+  images?: string[];
+  views?: number;
+  favoriteCount?: number;
+};
+
+const PLAN_LIMITS: Record<string, number> = {
+  free: 3,
+  plus: 20,
+  premium: Infinity,
 };
 
 export default function ProfilePage() {
-  const { user, isAuthenticated, updateUser } = useAuth();
   const router = useRouter();
+  const { user, isAuthenticated, isLoading, updateUser } = useAuth();
 
-  const [isEditing, setIsEditing] = useState(false);
-  const [bio, setBio] = useState('');
-  const [city, setCity] = useState('');
-  const [localProducts, setLocalProducts] = useState<any[]>([]);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  const [profile, setProfile] = useState<ProfileData | null>(null);
+  const [products, setProducts] = useState<LocalProduct[]>([]);
+  const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
+  const [avatarMessage, setAvatarMessage] = useState('');
+  const [avatarError, setAvatarError] = useState('');
+
+  const [isEditingBio, setIsEditingBio] = useState(false);
+  const [bioText, setBioText] = useState('');
+  const [cityText, setCityText] = useState('');
+  const [isSavingProfile, setIsSavingProfile] = useState(false);
+  const [profileMessage, setProfileMessage] = useState('');
+  const [profileError, setProfileError] = useState('');
 
   useEffect(() => {
-    if (!isAuthenticated || !user) {
+    if (!isLoading && !isAuthenticated) {
       router.push('/auth/login');
-      return;
     }
+  }, [isLoading, isAuthenticated, router]);
 
-    setBio(user.bio || '');
-    setCity(user.city || '');
-  }, [isAuthenticated, user, router]);
+  useEffect(() => {
+    const loadProfile = async () => {
+      if (!user?.id) return;
+
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('user_id', user.id)
+        .maybeSingle();
+
+      if (error) {
+        console.error('[La Segunda] Error cargando profile:', error.message);
+        return;
+      }
+
+      if (data) {
+        setProfile(data as ProfileData);
+        setBioText(data.bio || '');
+        setCityText(data.city || '');
+      }
+    };
+
+    loadProfile();
+  }, [user?.id]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
 
-    const possibleKeys = [
-      'la-segunda-products',
-      'products',
-      'user-products',
-      'seller-products',
-    ];
+    try {
+      const rawProducts = localStorage.getItem('la-segunda-products');
 
-    const loadedProducts: any[] = [];
-
-    possibleKeys.forEach((key) => {
-      const raw = localStorage.getItem(key);
-
-      if (!raw) return;
-
-      try {
-        const parsed = JSON.parse(raw);
-
-        if (Array.isArray(parsed)) {
-          loadedProducts.push(...parsed);
-        }
-      } catch {
-        console.warn(`No se pudo leer localStorage key: ${key}`);
+      if (!rawProducts) {
+        setProducts([]);
+        return;
       }
-    });
 
-    setLocalProducts(loadedProducts);
+      const parsedProducts = JSON.parse(rawProducts);
+
+      if (Array.isArray(parsedProducts)) {
+        setProducts(parsedProducts);
+      }
+    } catch {
+      setProducts([]);
+    }
   }, []);
-
-  if (!isAuthenticated || !user) {
-    return null;
-  }
 
   const currentUser = user as any;
 
-  const getAvatarByGender = (gender?: string) => {
+  const displayName =
+    profile?.full_name ||
+    currentUser?.name ||
+    currentUser?.email?.split('@')?.[0] ||
+    'Usuario La Segunda';
+
+  const displayEmail = profile?.email || currentUser?.email || '';
+
+  const displayCity = profile?.city || currentUser?.city || 'Lima';
+
+  const accountType = profile?.account_type || currentUser?.accountType || 'buyer';
+
+  const verificationStatus =
+    profile?.verification_status || currentUser?.verificationStatus || 'pending';
+
+  const membershipType = String(
+    profile?.membership_type ||
+      currentUser?.membershipType ||
+      currentUser?.membership ||
+      currentUser?.plan ||
+      'free'
+  ).toLowerCase();
+
+  const rating = Number(profile?.rating || currentUser?.rating || 0);
+  const reviewCount = Number(profile?.review_count || currentUser?.reviewCount || 0);
+
+  const avatarUrl = profile?.avatar_url || currentUser?.avatar || '';
+
+  const userProducts = useMemo(() => {
+    if (!user?.id) return [];
+
+    return products.filter((product) => {
+      return (
+        product.sellerId === user.id ||
+        product.userId === user.id ||
+        product.ownerId === user.id
+      );
+    });
+  }, [products, user?.id]);
+
+  const activeProducts = userProducts.filter((product) => {
+    return product.status === 'active' || !product.status;
+  });
+
+  const totalViews = userProducts.reduce(
+    (sum, product) => sum + Number(product.views || 0),
+    0
+  );
+
+  const totalFavorites = userProducts.reduce(
+    (sum, product) => sum + Number(product.favoriteCount || 0),
+    0
+  );
+
+  const isVerified = verificationStatus === 'verified';
+
+  const planLimit = PLAN_LIMITS[membershipType] ?? 3;
+
+  const postingLimit = isVerified ? planLimit : Math.min(planLimit, 2);
+
+  const remainingPosts =
+    postingLimit === Infinity
+      ? Infinity
+      : Math.max(postingLimit - activeProducts.length, 0);
+
+  const getAvatarEmoji = () => {
+    const gender = profile?.gender || currentUser?.gender || 'neutral';
+
     if (gender === 'male') return '👨‍💼';
     if (gender === 'female') return '👩‍💼';
     return '🙂';
   };
 
-  const getCurrentPlan = (): MembershipPlan => {
-    const rawPlan = String(
-      currentUser.membershipType ||
-        currentUser.membership ||
-        currentUser.plan ||
-        currentUser.sellerBadge ||
-        'free'
-    ).toLowerCase();
+  const isValidAvatarUrl = avatarUrl && String(avatarUrl).startsWith('http');
 
-    if (
-      rawPlan.includes('premium') ||
-      rawPlan.includes('elite') ||
-      rawPlan === 'premium'
-    ) {
-      return plans.premium;
-    }
-
-    if (rawPlan.includes('plus')) {
-      return plans.plus;
-    }
-
-    return plans.free;
+  const handleSelectAvatar = () => {
+    fileInputRef.current?.click();
   };
 
-  const currentPlan = getCurrentPlan();
+  const handleUploadAvatar = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    setAvatarMessage('');
+    setAvatarError('');
 
-  const allProducts = useMemo(() => {
-    const merged = [...mockProducts, ...localProducts];
+    const file = event.target.files?.[0];
 
-    const unique = new Map();
+    if (!file) return;
 
-    merged.forEach((product) => {
-      if (product?.id) {
-        unique.set(product.id, product);
+    if (!user?.id) {
+      setAvatarError('Debes iniciar sesión para subir una imagen.');
+      return;
+    }
+
+    if (!file.type.startsWith('image/')) {
+      setAvatarError('Solo puedes subir archivos de imagen.');
+      return;
+    }
+
+    if (file.size > 2 * 1024 * 1024) {
+      setAvatarError('La imagen no debe superar los 2 MB.');
+      return;
+    }
+
+    setIsUploadingAvatar(true);
+
+    try {
+      const fileExt = file.name.split('.').pop() || 'jpg';
+      const fileName = `avatar-${Date.now()}.${fileExt}`;
+      const filePath = `${user.id}/${fileName}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from('avatars')
+        .upload(filePath, file, {
+          cacheControl: '3600',
+          upsert: true,
+        });
+
+      if (uploadError) {
+        throw uploadError;
       }
-    });
 
-    return Array.from(unique.values());
-  }, [localProducts]);
+      const { data: publicUrlData } = supabase.storage
+        .from('avatars')
+        .getPublicUrl(filePath);
 
-  const userProducts = allProducts.filter((product: any) => {
+      const publicUrl = publicUrlData.publicUrl;
+
+      const { error: profileError } = await supabase
+        .from('profiles')
+        .update({
+          avatar_url: publicUrl,
+        })
+        .eq('user_id', user.id);
+
+      if (profileError) {
+        throw profileError;
+      }
+
+      setProfile((currentProfile) => {
+        if (!currentProfile) return currentProfile;
+
+        return {
+          ...currentProfile,
+          avatar_url: publicUrl,
+        };
+      });
+
+      updateUser({
+        avatar: publicUrl,
+      } as any);
+
+      setAvatarMessage('Avatar actualizado correctamente.');
+    } catch (err: any) {
+      setAvatarError(
+        err?.message || 'No se pudo subir la imagen. Intenta nuevamente.'
+      );
+    } finally {
+      setIsUploadingAvatar(false);
+
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+    }
+  };
+
+  const handleSaveProfile = async () => {
+    setProfileMessage('');
+    setProfileError('');
+
+    if (!user?.id) {
+      setProfileError('Debes iniciar sesión para editar tu perfil.');
+      return;
+    }
+
+    setIsSavingProfile(true);
+
+    try {
+      const { error } = await supabase
+        .from('profiles')
+        .update({
+          bio: bioText.trim(),
+          city: cityText.trim(),
+        })
+        .eq('user_id', user.id);
+
+      if (error) {
+        throw error;
+      }
+
+      setProfile((currentProfile) => {
+        if (!currentProfile) return currentProfile;
+
+        return {
+          ...currentProfile,
+          bio: bioText.trim(),
+          city: cityText.trim(),
+        };
+      });
+
+      updateUser({
+        bio: bioText.trim(),
+        city: cityText.trim(),
+      } as any);
+
+      setIsEditingBio(false);
+      setProfileMessage('Perfil actualizado correctamente.');
+    } catch (err: any) {
+      setProfileError(
+        err?.message || 'No se pudo actualizar el perfil. Intenta nuevamente.'
+      );
+    } finally {
+      setIsSavingProfile(false);
+    }
+  };
+
+  const getVerificationBadge = () => {
+    if (verificationStatus === 'verified') {
+      return (
+        <Badge className="bg-green-100 text-green-800">
+          <ShieldCheck className="mr-1 h-3 w-3" />
+          Verificado
+        </Badge>
+      );
+    }
+
+    if (verificationStatus === 'rejected') {
+      return (
+        <Badge className="bg-red-100 text-red-800">
+          <AlertCircle className="mr-1 h-3 w-3" />
+          Rechazado
+        </Badge>
+      );
+    }
+
     return (
-      product.sellerId === user.id ||
-      product.userId === user.id ||
-      product.ownerId === user.id
+      <Badge className="bg-yellow-100 text-yellow-800">
+        <AlertCircle className="mr-1 h-3 w-3" />
+        Verificación pendiente
+      </Badge>
     );
-  });
-
-  const receivedReviews = mockReviews.filter((review) => {
-    const product = mockProducts.find((p) => p.id === review.productId);
-    return product?.sellerId === user.id;
-  });
-
-  const userReviews = mockReviews.filter((review) => review.buyerId === user.id);
-
-  const isVerified = user.verificationStatus === 'verified';
-
-  const verificationLimit = isVerified ? currentPlan.limit : Math.min(currentPlan.limit, 2);
-
-  const publishedCount = userProducts.length;
-
-  const hasUnlimitedPosts = verificationLimit === Infinity;
-
-  const remainingPosts = hasUnlimitedPosts
-    ? Infinity
-    : Math.max(verificationLimit - publishedCount, 0);
-
-  const canPublish = hasUnlimitedPosts || publishedCount < verificationLimit;
-
-  const progressPercent = hasUnlimitedPosts
-    ? 100
-    : Math.min((publishedCount / verificationLimit) * 100, 100);
-
-  const publishUrl = canPublish ? '/seller/dashboard' : '/seller/membership';
-
-  const badgeColors: Record<string, string> = {
-    standard: 'bg-blue-100 text-blue-800',
-    premium: 'bg-purple-100 text-purple-800',
-    elite: 'bg-amber-100 text-amber-800',
   };
 
-  const mockFavorites = [
-    {
-      id: 'fav-1',
-      title: 'iPhone 13 Pro usado',
-      price: 1850,
-      city: 'Lima',
-      status: 'Disponible',
-    },
-    {
-      id: 'fav-2',
-      title: 'Laptop Lenovo i5',
-      price: 1200,
-      city: 'Surco',
-      status: 'En conversación',
-    },
-  ];
+  const getPlanBadge = () => {
+    if (membershipType === 'premium') {
+      return <Badge className="bg-amber-100 text-amber-800">Plan Premium</Badge>;
+    }
 
-  const mockConversations = [
-    {
-      id: 'conv-1',
-      product: 'PlayStation 5',
-      seller: 'Carlos Mendoza',
-      lastMessage: 'Hola, sí sigue disponible.',
-      status: 'En conversación',
-    },
-    {
-      id: 'conv-2',
-      product: 'Bicicleta montañera',
-      seller: 'María López',
-      lastMessage: 'Podemos coordinar la entrega.',
-      status: 'Reservado',
-    },
-  ];
+    if (membershipType === 'plus') {
+      return <Badge className="bg-blue-100 text-blue-800">Plan Plus</Badge>;
+    }
 
-  const handleProfileUpdate = () => {
-    updateUser({ bio, city });
-    setIsEditing(false);
+    return <Badge className="bg-slate-100 text-slate-800">Plan Gratis</Badge>;
   };
+
+  const getAccountTypeLabel = () => {
+    if (accountType === 'seller') return 'Vendedor';
+    if (accountType === 'both') return 'Comprador + Vendedor';
+    return 'Comprador';
+  };
+
+  if (isLoading || !isAuthenticated || !user) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-slate-50">
+        <div className="text-center">
+          <Loader2 className="mx-auto mb-3 h-8 w-8 animate-spin text-primary" />
+          <p className="text-sm text-muted-foreground">Cargando perfil...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-slate-50">
       <Header />
 
       <div className="container mx-auto px-4 py-8">
-        {/* DASHBOARD HEADER */}
-        <div className="mb-8">
-          <div className="rounded-2xl border bg-white p-6 shadow-sm">
-            <div className="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
-              <div className="flex flex-col gap-5 sm:flex-row sm:items-center">
-                <div className="flex h-24 w-24 items-center justify-center rounded-full border-4 border-primary/10 bg-slate-100 shadow-sm">
-                  <span className="text-5xl">{getAvatarByGender(user.gender)}</span>
+        <Card className="mb-8 overflow-hidden">
+          <CardContent className="p-0">
+            <div className="h-28 bg-gradient-to-r from-primary to-blue-700" />
+
+            <div className="px-6 pb-6">
+              <div className="-mt-16 flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
+                <div className="flex flex-col gap-4 sm:flex-row sm:items-end">
+                  <div className="relative">
+                    <div className="flex h-32 w-32 items-center justify-center overflow-hidden rounded-full border-4 border-white bg-slate-100 shadow-lg">
+                      {isValidAvatarUrl ? (
+                        <img
+                          src={avatarUrl}
+                          alt={displayName}
+                          className="h-full w-full object-cover"
+                        />
+                      ) : (
+                        <span className="text-6xl">{getAvatarEmoji()}</span>
+                      )}
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={handleSelectAvatar}
+                      disabled={isUploadingAvatar}
+                      className="absolute bottom-2 right-2 flex h-10 w-10 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-lg transition hover:bg-primary/90 disabled:opacity-60"
+                    >
+                      {isUploadingAvatar ? (
+                        <Loader2 className="h-5 w-5 animate-spin" />
+                      ) : (
+                        <Camera className="h-5 w-5" />
+                      )}
+                    </button>
+
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={handleUploadAvatar}
+                    />
+                  </div>
+
+                  <div className="pb-2">
+                    <div className="mb-3 flex flex-wrap items-center gap-2">
+                      <h1 className="text-3xl font-bold">{displayName}</h1>
+                      {getVerificationBadge()}
+                      {getPlanBadge()}
+                    </div>
+
+                    <div className="mb-3 flex flex-wrap gap-2">
+                      <Badge variant="outline" className="gap-1">
+                        <MapPin className="h-3 w-3" />
+                        {displayCity}
+                      </Badge>
+
+                      <Badge variant="outline" className="gap-1">
+                        <User className="h-3 w-3" />
+                        {getAccountTypeLabel()}
+                      </Badge>
+
+                      <Badge variant="outline" className="gap-1">
+                        <Calendar className="h-3 w-3" />
+                        Miembro desde{' '}
+                        {profile?.created_at
+                          ? new Date(profile.created_at).toLocaleDateString('es-PE', {
+                              month: 'long',
+                              year: 'numeric',
+                            })
+                          : currentUser?.joinDate || '2026'}
+                      </Badge>
+                    </div>
+
+                    <div className="flex items-center gap-2 text-muted-foreground">
+                      <Star className="h-5 w-5 fill-yellow-400 text-yellow-400" />
+                      <span className="text-lg font-semibold text-foreground">
+                        {rating}
+                      </span>
+                      <span>({reviewCount} calificaciones)</span>
+                    </div>
+                  </div>
                 </div>
 
+                <div className="flex flex-col gap-3 sm:flex-row">
+                  <Button
+                    variant="outline"
+                    onClick={handleSelectAvatar}
+                    disabled={isUploadingAvatar}
+                  >
+                    <Upload className="mr-2 h-4 w-4" />
+                    Cambiar avatar
+                  </Button>
+
+                  <Button onClick={() => setIsEditingBio(!isEditingBio)}>
+                    <Edit3 className="mr-2 h-4 w-4" />
+                    Editar perfil
+                  </Button>
+                </div>
+              </div>
+
+              {avatarMessage && (
+                <div className="mt-5 flex items-center gap-2 rounded-xl border border-green-200 bg-green-50 p-3 text-sm text-green-700">
+                  <CheckCircle className="h-4 w-4" />
+                  {avatarMessage}
+                </div>
+              )}
+
+              {avatarError && (
+                <div className="mt-5 flex items-center gap-2 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+                  <AlertCircle className="h-4 w-4" />
+                  {avatarError}
+                </div>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+
+        <div className="mb-8 grid gap-6 lg:grid-cols-3">
+          <Card className="lg:col-span-2">
+            <CardHeader>
+              <div className="flex items-center justify-between gap-3">
                 <div>
-                  <div className="mb-2 flex flex-wrap items-center gap-3">
-                    <h1 className="text-3xl font-bold">{user.name}</h1>
+                  <CardTitle>Sobre mí</CardTitle>
+                  <CardDescription>
+                    Información pública visible para compradores y vendedores.
+                  </CardDescription>
+                </div>
 
-                    {isVerified ? (
-                      <Badge className="gap-1 bg-green-100 text-green-800">
-                        <CheckCircle className="h-3 w-3" />
-                        Verificado
-                      </Badge>
-                    ) : (
-                      <Badge className="gap-1 bg-yellow-100 text-yellow-800">
-                        <AlertTriangle className="h-3 w-3" />
-                        Verificación pendiente
-                      </Badge>
-                    )}
+                {!isEditingBio && (
+                  <Button variant="outline" size="sm" onClick={() => setIsEditingBio(true)}>
+                    <Edit3 className="mr-2 h-4 w-4" />
+                    Editar
+                  </Button>
+                )}
+              </div>
+            </CardHeader>
 
-                    <Badge className={currentPlan.badgeClass}>
-                      {currentPlan.name}
-                    </Badge>
+            <CardContent>
+              {profileMessage && (
+                <div className="mb-4 rounded-xl border border-green-200 bg-green-50 p-3 text-sm text-green-700">
+                  {profileMessage}
+                </div>
+              )}
+
+              {profileError && (
+                <div className="mb-4 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+                  {profileError}
+                </div>
+              )}
+
+              {isEditingBio ? (
+                <div className="space-y-4">
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">Ciudad</label>
+                    <input
+                      value={cityText}
+                      onChange={(event) => setCityText(event.target.value)}
+                      placeholder="Ejemplo: Lima"
+                      className="w-full rounded-md border bg-background px-3 py-2 text-sm"
+                    />
                   </div>
 
-                  <div className="mb-3 flex flex-wrap gap-2">
-                    {user.city && (
-                      <Badge variant="outline" className="flex items-center gap-1">
-                        <MapPin className="h-3 w-3" />
-                        {user.city}
-                      </Badge>
-                    )}
-
-                    {user.accountType && (
-                      <Badge variant="outline">
-                        {getAccountTypeLabel(user.accountType)}
-                      </Badge>
-                    )}
-
-                    <Badge variant="outline" className="flex items-center gap-1">
-                      <Calendar className="h-3 w-3" />
-                      Miembro desde{' '}
-                      {new Date(user.joinDate).toLocaleDateString('es-PE', {
-                        month: 'long',
-                        year: 'numeric',
-                      })}
-                    </Badge>
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">Descripción</label>
+                    <textarea
+                      value={bioText}
+                      onChange={(event) => setBioText(event.target.value)}
+                      placeholder="Cuenta algo sobre ti, qué vendes o qué tipo de productos buscas..."
+                      className="min-h-32 w-full rounded-md border bg-background px-3 py-2 text-sm"
+                    />
                   </div>
 
-                  <div className="flex items-center gap-2">
-                    <Star className="h-4 w-4 fill-yellow-400 text-yellow-400" />
-                    <span className="font-semibold">{user.rating}</span>
-                    <span className="text-sm text-muted-foreground">
-                      ({user.reviewCount} calificaciones)
-                    </span>
+                  <div className="flex flex-col gap-3 sm:flex-row">
+                    <Button onClick={handleSaveProfile} disabled={isSavingProfile}>
+                      {isSavingProfile ? (
+                        <>
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          Guardando...
+                        </>
+                      ) : (
+                        <>
+                          <CheckCircle className="mr-2 h-4 w-4" />
+                          Guardar cambios
+                        </>
+                      )}
+                    </Button>
+
+                    <Button
+                      variant="outline"
+                      onClick={() => {
+                        setIsEditingBio(false);
+                        setBioText(profile?.bio || '');
+                        setCityText(profile?.city || '');
+                      }}
+                    >
+                      Cancelar
+                    </Button>
                   </div>
+                </div>
+              ) : (
+                <p className="leading-relaxed text-muted-foreground">
+                  {profile?.bio ||
+                    currentUser?.bio ||
+                    'Sin información de perfil. Agrega una descripción para generar más confianza en tus compras y ventas.'}
+                </p>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Seguridad de cuenta</CardTitle>
+              <CardDescription>Estado actual de tu cuenta.</CardDescription>
+            </CardHeader>
+
+            <CardContent className="space-y-4">
+              <div className="rounded-xl bg-slate-100 p-4">
+                <p className="mb-1 text-sm text-muted-foreground">Estado de identidad</p>
+                <div>{getVerificationBadge()}</div>
+              </div>
+
+              <div className="rounded-xl bg-slate-100 p-4">
+                <p className="mb-1 text-sm text-muted-foreground">Correo registrado</p>
+                <p className="flex items-center gap-2 break-all text-sm font-medium">
+                  <Mail className="h-4 w-4" />
+                  {displayEmail}
+                </p>
+              </div>
+
+              <div className="rounded-xl border border-blue-200 bg-blue-50 p-4 text-sm text-blue-800">
+                La Segunda protege el contacto entre comprador y vendedor mediante
+                chat interno seguro.
+              </div>
+
+              <Button variant="outline" className="w-full">
+                <ShieldCheck className="mr-2 h-4 w-4" />
+                Verificar identidad
+              </Button>
+            </CardContent>
+          </Card>
+        </div>
+
+        <div className="mb-8 grid gap-6 lg:grid-cols-3">
+          <Card>
+            <CardHeader>
+              <CardTitle>Publicaciones disponibles</CardTitle>
+              <CardDescription>Controla cuántos artículos puedes publicar.</CardDescription>
+            </CardHeader>
+
+            <CardContent className="space-y-4">
+              <div className="grid grid-cols-3 gap-3">
+                <div className="rounded-xl bg-slate-100 p-3">
+                  <p className="text-xs text-muted-foreground">Publicados</p>
+                  <p className="text-2xl font-bold">{activeProducts.length}</p>
+                </div>
+
+                <div className="rounded-xl bg-slate-100 p-3">
+                  <p className="text-xs text-muted-foreground">Límite</p>
+                  <p className="text-2xl font-bold">
+                    {postingLimit === Infinity ? '∞' : postingLimit}
+                  </p>
+                </div>
+
+                <div className="rounded-xl bg-slate-100 p-3">
+                  <p className="text-xs text-muted-foreground">Disponibles</p>
+                  <p className="text-2xl font-bold">
+                    {remainingPosts === Infinity ? '∞' : remainingPosts}
+                  </p>
                 </div>
               </div>
 
               <div className="flex flex-col gap-3 sm:flex-row">
-                <Link href={publishUrl}>
-                  <Button
-                    className={`w-full sm:w-auto ${
-                      canPublish ? '' : 'bg-amber-600 hover:bg-amber-700'
-                    }`}
-                  >
-                    {canPublish ? (
-                      <>
-                        <PackagePlus className="mr-2 h-4 w-4" />
-                        Publicar artículo
-                      </>
-                    ) : (
-                      <>
-                        <Lock className="mr-2 h-4 w-4" />
-                        Mejorar membresía
-                      </>
-                    )}
+                <Link href="/seller/dashboard" className="w-full">
+                  <Button className="w-full">
+                    <PackagePlus className="mr-2 h-4 w-4" />
+                    Publicar artículo
                   </Button>
                 </Link>
 
-                <Link href="/messages">
-                  <Button variant="outline" className="w-full sm:w-auto">
-                    <MessageCircle className="mr-2 h-4 w-4" />
-                    Mensajes
-                  </Button>
-                </Link>
-
-                <Button
-                  variant="outline"
-                  className="w-full sm:w-auto"
-                  onClick={() => setIsEditing(!isEditing)}
-                >
-                  <Edit2 className="mr-2 h-4 w-4" />
-                  Editar perfil
-                </Button>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* MAIN GRID */}
-        <div className="grid gap-6 lg:grid-cols-3">
-          {/* LEFT COLUMN */}
-          <div className="space-y-6 lg:col-span-2">
-            {/* POSTING LIMIT CARD */}
-            <Card className="border-2">
-              <CardHeader>
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                  <div>
-                    <CardTitle className="flex items-center gap-2">
-                      <Store className="h-5 w-5 text-primary" />
-                      Publicaciones disponibles
-                    </CardTitle>
-                    <CardDescription>
-                      Controla cuántos artículos puedes publicar según tu membresía.
-                    </CardDescription>
-                  </div>
-
-                  <Badge className={currentPlan.badgeClass}>
-                    {currentPlan.name}
-                  </Badge>
-                </div>
-              </CardHeader>
-
-              <CardContent>
-                <div className="mb-4 grid gap-4 sm:grid-cols-3">
-                  <div className="rounded-xl bg-slate-50 p-4">
-                    <p className="text-sm text-muted-foreground">Publicados</p>
-                    <p className="text-3xl font-bold">{publishedCount}</p>
-                  </div>
-
-                  <div className="rounded-xl bg-slate-50 p-4">
-                    <p className="text-sm text-muted-foreground">Límite actual</p>
-                    <p className="text-3xl font-bold">
-                      {hasUnlimitedPosts ? '∞' : verificationLimit}
-                    </p>
-                  </div>
-
-                  <div className="rounded-xl bg-slate-50 p-4">
-                    <p className="text-sm text-muted-foreground">Disponibles</p>
-                    <p className="text-3xl font-bold">
-                      {hasUnlimitedPosts ? 'Ilimitado' : remainingPosts}
-                    </p>
-                  </div>
-                </div>
-
-                {!hasUnlimitedPosts && (
-                  <div className="mb-4">
-                    <div className="mb-2 flex justify-between text-sm">
-                      <span>Uso de publicaciones</span>
-                      <span>
-                        {publishedCount}/{verificationLimit}
-                      </span>
-                    </div>
-
-                    <div className="h-3 w-full overflow-hidden rounded-full bg-slate-200">
-                      <div
-                        className={`h-full rounded-full ${
-                          canPublish ? 'bg-primary' : 'bg-amber-500'
-                        }`}
-                        style={{ width: `${progressPercent}%` }}
-                      />
-                    </div>
-                  </div>
-                )}
-
-                {!isVerified && (
-                  <div className="mb-4 rounded-xl border border-yellow-200 bg-yellow-50 p-4 text-sm text-yellow-800">
-                    <div className="mb-1 flex items-center gap-2 font-semibold">
-                      <AlertTriangle className="h-4 w-4" />
-                      Verificación pendiente
-                    </div>
-                    Los usuarios no verificados solo pueden publicar hasta 2 artículos.
-                    Verifica tu identidad para desbloquear más publicaciones.
-                  </div>
-                )}
-
-                {!canPublish && (
-                  <div className="rounded-xl border border-amber-200 bg-amber-50 p-4">
-                    <div className="mb-2 flex items-center gap-2 font-semibold text-amber-900">
-                      <Lock className="h-4 w-4" />
-                      Límite de publicaciones alcanzado
-                    </div>
-
-                    <p className="mb-4 text-sm text-amber-800">
-                      Ya usaste todas tus publicaciones disponibles. Para seguir
-                      publicando artículos, activa una membresía Plus o Premium.
-                    </p>
-
-                    <Link href="/seller/membership">
-                      <Button className="bg-amber-600 hover:bg-amber-700">
-                        <Crown className="mr-2 h-4 w-4" />
-                        Ver planes de membresía
-                      </Button>
-                    </Link>
-                  </div>
-                )}
-
-                {canPublish && (
-                  <div className="flex flex-col gap-3 sm:flex-row">
-                    <Link href="/seller/dashboard">
-                      <Button>
-                        <PackagePlus className="mr-2 h-4 w-4" />
-                        Publicar nuevo artículo
-                      </Button>
-                    </Link>
-
-                    <Link href="/seller/membership">
-                      <Button variant="outline">
-                        <Crown className="mr-2 h-4 w-4" />
-                        Mejorar plan
-                      </Button>
-                    </Link>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-
-            {/* EDIT PROFILE */}
-            {isEditing && (
-              <Card>
-                <CardHeader>
-                  <CardTitle>Editar perfil</CardTitle>
-                  <CardDescription>
-                    Actualiza tu información pública dentro de La Segunda.
-                  </CardDescription>
-                </CardHeader>
-
-                <CardContent className="space-y-4">
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium">Ciudad</label>
-                    <Input
-                      value={city}
-                      onChange={(e) => setCity(e.target.value)}
-                      placeholder="Ejemplo: Lima"
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium">Sobre mí</label>
-                    <Input
-                      value={bio}
-                      onChange={(e) => setBio(e.target.value)}
-                      placeholder="Cuéntanos algo sobre ti"
-                    />
-                  </div>
-
-                  <div className="flex gap-2">
-                    <Button onClick={handleProfileUpdate}>Guardar cambios</Button>
-                    <Button variant="outline" onClick={() => setIsEditing(false)}>
-                      Cancelar
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
-            )}
-
-            {/* CONVERSATIONS */}
-            <Card>
-              <CardHeader>
-                <CardTitle>Mis conversaciones recientes</CardTitle>
-                <CardDescription>
-                  Continúa negociando de forma segura dentro de La Segunda.
-                </CardDescription>
-              </CardHeader>
-
-              <CardContent className="space-y-3">
-                {mockConversations.map((conversation) => (
-                  <div
-                    key={conversation.id}
-                    className="flex flex-col gap-3 rounded-xl border p-4 sm:flex-row sm:items-center sm:justify-between"
-                  >
-                    <div>
-                      <p className="font-semibold">{conversation.product}</p>
-                      <p className="text-sm text-muted-foreground">
-                        Vendedor: {conversation.seller}
-                      </p>
-                      <p className="text-sm text-muted-foreground">
-                        {conversation.lastMessage}
-                      </p>
-                    </div>
-
-                    <div className="flex items-center gap-2">
-                      <Badge variant="outline">{conversation.status}</Badge>
-                      <Link href="/messages">
-                        <Button size="sm" variant="outline">
-                          Abrir chat
-                        </Button>
-                      </Link>
-                    </div>
-                  </div>
-                ))}
-              </CardContent>
-            </Card>
-
-            {/* FAVORITES */}
-            <Card>
-              <CardHeader>
-                <CardTitle>Mis favoritos</CardTitle>
-                <CardDescription>
-                  Productos que guardaste para revisar después.
-                </CardDescription>
-              </CardHeader>
-
-              <CardContent>
-                <div className="grid gap-4 sm:grid-cols-2">
-                  {mockFavorites.map((item) => (
-                    <div key={item.id} className="rounded-xl border p-4">
-                      <div className="mb-3 flex items-center justify-between">
-                        <Heart className="h-5 w-5 text-red-500" />
-                        <Badge variant="outline">{item.status}</Badge>
-                      </div>
-
-                      <h3 className="font-semibold">{item.title}</h3>
-
-                      <p className="mt-1 text-xl font-bold text-primary">
-                        S/ {item.price.toLocaleString()}
-                      </p>
-
-                      <p className="mt-1 flex items-center gap-1 text-sm text-muted-foreground">
-                        <MapPin className="h-3 w-3" />
-                        {item.city}
-                      </p>
-
-                      <Link href="/products">
-                        <Button variant="outline" size="sm" className="mt-4 w-full">
-                          Ver producto
-                        </Button>
-                      </Link>
-                    </div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* REVIEWS */}
-            <Card>
-              <CardHeader>
-                <CardTitle>
-                  {user.isSeller ? 'Reseñas recibidas' : 'Mis reseñas'}
-                </CardTitle>
-              </CardHeader>
-
-              <CardContent>
-                {receivedReviews.length > 0 || userReviews.length > 0 ? (
-                  <div className="space-y-4">
-                    {(user.isSeller ? receivedReviews : userReviews).map((review) => {
-                      const reviewerName = mockUsers.find(
-                        (u) => u.id === review.buyerId
-                      )?.name;
-
-                      return (
-                        <div key={review.id} className="rounded-xl border p-4">
-                          <div className="mb-2 flex items-center justify-between">
-                            <div>
-                              <p className="font-semibold">{reviewerName}</p>
-                              <p className="text-sm text-muted-foreground">
-                                {review.createdAt}
-                              </p>
-                            </div>
-
-                            <div className="flex items-center gap-1">
-                              {Array.from({ length: review.rating }).map((_, i) => (
-                                <Star
-                                  key={i}
-                                  className="h-4 w-4 fill-yellow-400 text-yellow-400"
-                                />
-                              ))}
-                            </div>
-                          </div>
-
-                          <p className="text-muted-foreground">{review.comment}</p>
-                        </div>
-                      );
-                    })}
-                  </div>
-                ) : (
-                  <div className="rounded-xl border border-dashed p-8 text-center">
-                    <p className="text-muted-foreground">
-                      No tienes reseñas registradas todavía.
-                    </p>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          </div>
-
-          {/* RIGHT COLUMN */}
-          <div className="space-y-6">
-            {/* STATS */}
-            <Card>
-              <CardHeader>
-                <CardTitle>Estadísticas</CardTitle>
-              </CardHeader>
-
-              <CardContent className="space-y-4">
-                <div className="flex items-center justify-between rounded-xl bg-slate-50 p-4">
-                  <div>
-                    <p className="text-sm text-muted-foreground">Productos activos</p>
-                    <p className="text-2xl font-bold">{userProducts.length}</p>
-                  </div>
-                  <PackagePlus className="h-6 w-6 text-primary" />
-                </div>
-
-                <div className="flex items-center justify-between rounded-xl bg-slate-50 p-4">
-                  <div>
-                    <p className="text-sm text-muted-foreground">Reseñas recibidas</p>
-                    <p className="text-2xl font-bold">{receivedReviews.length}</p>
-                  </div>
-                  <Star className="h-6 w-6 text-yellow-500" />
-                </div>
-
-                <div className="flex items-center justify-between rounded-xl bg-slate-50 p-4">
-                  <div>
-                    <p className="text-sm text-muted-foreground">Vistas totales</p>
-                    <p className="text-2xl font-bold">
-                      {userProducts.reduce(
-                        (sum: number, product: any) => sum + (product.views || 0),
-                        0
-                      )}
-                    </p>
-                  </div>
-                  <TrendingUp className="h-6 w-6 text-green-600" />
-                </div>
-
-                <div className="flex items-center justify-between rounded-xl bg-slate-50 p-4">
-                  <div>
-                    <p className="text-sm text-muted-foreground">Favoritos</p>
-                    <p className="text-2xl font-bold">{mockFavorites.length}</p>
-                  </div>
-                  <Heart className="h-6 w-6 text-red-500" />
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* QUICK ACTIONS */}
-            <Card>
-              <CardHeader>
-                <CardTitle>Acciones rápidas</CardTitle>
-              </CardHeader>
-
-              <CardContent className="space-y-3">
-                <Link href={publishUrl}>
-                  <Button className="w-full justify-between">
-                    {canPublish ? 'Publicar artículo' : 'Activar membresía'}
-                    <ArrowRight className="h-4 w-4" />
-                  </Button>
-                </Link>
-
-                <Link href="/products">
-                  <Button variant="outline" className="w-full justify-between">
-                    Explorar productos
-                    <ArrowRight className="h-4 w-4" />
-                  </Button>
-                </Link>
-
-                <Link href="/messages">
-                  <Button variant="outline" className="w-full justify-between">
-                    Ver mensajes
-                    <ArrowRight className="h-4 w-4" />
-                  </Button>
-                </Link>
-
-                <Link href="/seller/membership">
-                  <Button variant="outline" className="w-full justify-between">
-                    Ver membresías
-                    <ArrowRight className="h-4 w-4" />
-                  </Button>
-                </Link>
-              </CardContent>
-            </Card>
-
-            {/* SECURITY */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <ShieldCheck className="h-5 w-5 text-green-600" />
-                  Seguridad de cuenta
-                </CardTitle>
-              </CardHeader>
-
-              <CardContent className="space-y-4">
-                <div className="rounded-xl bg-slate-50 p-4">
-                  <p className="text-sm text-muted-foreground">Estado de identidad</p>
-                  <p className="font-semibold">
-                    {isVerified ? 'Identidad verificada' : 'Pendiente de verificación'}
-                  </p>
-                </div>
-
-                <div className="rounded-xl bg-slate-50 p-4">
-                  <p className="text-sm text-muted-foreground">Correo registrado</p>
-                  <p className="truncate font-semibold">{user.email}</p>
-                </div>
-
-                <div className="rounded-xl border border-blue-200 bg-blue-50 p-4 text-sm text-blue-800">
-                  La Segunda protege el contacto entre comprador y vendedor mediante
-                  chat interno seguro.
-                </div>
-
-                {!isVerified && (
+                <Link href="/seller/membership" className="w-full">
                   <Button variant="outline" className="w-full">
-                    Verificar identidad
-                  </Button>
-                )}
-              </CardContent>
-            </Card>
-
-            {/* BUSINESS CTA */}
-            <Card className="border-amber-200 bg-amber-50">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-amber-900">
-                  <Crown className="h-5 w-5" />
-                  Vende más con membresía
-                </CardTitle>
-                <CardDescription className="text-amber-800">
-                  Desbloquea más publicaciones y paga menos comisión por venta.
-                </CardDescription>
-              </CardHeader>
-
-              <CardContent>
-                <div className="mb-4 space-y-2 text-sm text-amber-900">
-                  <p>Plus: hasta 20 publicaciones y comisión de 5%.</p>
-                  <p>Premium: publicaciones ilimitadas y comisión de 2%.</p>
-                </div>
-
-                <Link href="/seller/membership">
-                  <Button className="w-full bg-amber-600 hover:bg-amber-700">
-                    Ver planes
+                    <Lock className="mr-2 h-4 w-4" />
+                    Mejorar plan
                   </Button>
                 </Link>
-              </CardContent>
-            </Card>
-          </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Estadísticas</CardTitle>
+              <CardDescription>Resumen de tu actividad.</CardDescription>
+            </CardHeader>
+
+            <CardContent className="space-y-4">
+              <div className="rounded-xl bg-slate-100 p-4">
+                <p className="text-2xl font-bold">{activeProducts.length}</p>
+                <p className="text-sm text-muted-foreground">Productos activos</p>
+              </div>
+
+              <div className="rounded-xl bg-slate-100 p-4">
+                <p className="text-2xl font-bold">{reviewCount}</p>
+                <p className="text-sm text-muted-foreground">Reseñas recibidas</p>
+              </div>
+
+              <div className="rounded-xl bg-slate-100 p-4">
+                <p className="text-2xl font-bold">{totalViews}</p>
+                <p className="text-sm text-muted-foreground">Vistas totales</p>
+              </div>
+
+              <div className="rounded-xl bg-slate-100 p-4">
+                <p className="text-2xl font-bold">{totalFavorites}</p>
+                <p className="text-sm text-muted-foreground">Favoritos</p>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="border-amber-200 bg-amber-50">
+            <CardHeader>
+              <CardTitle>Vende más con membresía</CardTitle>
+              <CardDescription>
+                Desbloquea más publicaciones y paga menos comisión.
+              </CardDescription>
+            </CardHeader>
+
+            <CardContent>
+              <div className="space-y-2 text-sm text-amber-900">
+                <p>Plus: hasta 20 publicaciones y comisión 5%.</p>
+                <p>Premium: publicaciones ilimitadas y comisión 2%.</p>
+              </div>
+
+              <Link href="/seller/membership">
+                <Button className="mt-5 w-full bg-amber-600 hover:bg-amber-700">
+                  Ver planes
+                </Button>
+              </Link>
+            </CardContent>
+          </Card>
         </div>
+
+        <Card className="mb-8">
+          <CardHeader>
+            <CardTitle>Mis productos</CardTitle>
+            <CardDescription>
+              Productos publicados desde tu cuenta.
+            </CardDescription>
+          </CardHeader>
+
+          <CardContent>
+            {userProducts.length > 0 ? (
+              <div className="grid gap-4 md:grid-cols-2">
+                {userProducts.slice(0, 4).map((product) => {
+                  const imageUrl =
+                    product.images?.[0] ||
+                    'https://placehold.co/300x200?text=La+Segunda';
+
+                  return (
+                    <div
+                      key={product.id}
+                      className="flex gap-4 rounded-xl border bg-white p-4"
+                    >
+                      <img
+                        src={imageUrl}
+                        alt={product.title || product.name || 'Producto'}
+                        className="h-20 w-20 rounded-lg object-cover"
+                      />
+
+                      <div className="min-w-0 flex-1">
+                        <div className="mb-1 flex items-center justify-between gap-2">
+                          <h3 className="truncate font-semibold">
+                            {product.title || product.name}
+                          </h3>
+
+                          <Badge variant="outline">
+                            {product.status || 'active'}
+                          </Badge>
+                        </div>
+
+                        <p className="text-lg font-bold text-primary">
+                          S/ {Number(product.price || 0).toLocaleString('es-PE')}
+                        </p>
+
+                        <p className="mt-1 text-sm text-muted-foreground">
+                          {product.city || 'Perú'}
+                        </p>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="rounded-xl border border-dashed p-10 text-center">
+                <PackagePlus className="mx-auto mb-4 h-12 w-12 text-muted-foreground" />
+
+                <h3 className="mb-2 text-xl font-bold">
+                  Aún no tienes productos publicados
+                </h3>
+
+                <p className="mb-5 text-muted-foreground">
+                  Publica tu primer artículo para empezar a vender.
+                </p>
+
+                <Link href="/seller/dashboard">
+                  <Button>Publicar producto</Button>
+                </Link>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Mis reseñas</CardTitle>
+            <CardDescription>
+              Opiniones recibidas por tus compras y ventas.
+            </CardDescription>
+          </CardHeader>
+
+          <CardContent>
+            <div className="rounded-xl border border-dashed p-10 text-center text-muted-foreground">
+              No tienes reseñas registradas todavía.
+            </div>
+          </CardContent>
+        </Card>
       </div>
     </div>
   );
