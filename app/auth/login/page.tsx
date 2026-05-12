@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { supabase } from '@/lib/supabase/client';
@@ -22,6 +22,34 @@ import {
   LogIn,
   Mail,
 } from 'lucide-react';
+
+type LoginResult = {
+  access_token: string;
+  refresh_token: string;
+  expires_in: number;
+  token_type: string;
+  user: {
+    id: string;
+    email?: string;
+    user_metadata?: {
+      full_name?: string;
+      name?: string;
+    };
+  };
+};
+
+function getSupabaseStorageKey() {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
+
+  try {
+    const host = new URL(supabaseUrl).hostname;
+    const projectRef = host.split('.')[0];
+
+    return `sb-${projectRef}-auth-token`;
+  } catch {
+    return 'supabase-auth-token';
+  }
+}
 
 function getFriendlyError(message: string) {
   const text = message.toLowerCase();
@@ -46,50 +74,117 @@ function getFriendlyError(message: string) {
     return 'Has realizado demasiados intentos. Espera unos minutos e intenta nuevamente.';
   }
 
-  if (text.includes('fetch failed') || text.includes('failed to fetch')) {
-    return 'No se pudo conectar con Supabase. Verifica tus variables de entorno en Vercel.';
+  if (
+    text.includes('failed to fetch') ||
+    text.includes('fetch failed') ||
+    text.includes('network')
+  ) {
+    return 'No se pudo conectar con Supabase. Revisa NEXT_PUBLIC_SUPABASE_URL y NEXT_PUBLIC_SUPABASE_ANON_KEY en Vercel.';
   }
 
   return message || 'No se pudo iniciar sesión. Intenta nuevamente.';
 }
 
-function withTimeout<T>(promise: Promise<T>, timeoutMs = 15000): Promise<T> {
-  return Promise.race([
-    promise,
-    new Promise<T>((_, reject) => {
-      window.setTimeout(() => {
-        reject(
-          new Error(
-            'La validación está demorando demasiado. Intenta nuevamente o revisa la conexión con Supabase.'
-          )
-        );
-      }, timeoutMs);
-    }),
-  ]);
+async function loginWithRestFallback(email: string, password: string) {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+  if (!supabaseUrl || !supabaseAnonKey) {
+    throw new Error(
+      'Faltan variables NEXT_PUBLIC_SUPABASE_URL o NEXT_PUBLIC_SUPABASE_ANON_KEY.'
+    );
+  }
+
+  const controller = new AbortController();
+
+  const timeout = window.setTimeout(() => {
+    controller.abort();
+  }, 12000);
+
+  try {
+    const response = await fetch(
+      `${supabaseUrl}/auth/v1/token?grant_type=password`,
+      {
+        method: 'POST',
+        signal: controller.signal,
+        headers: {
+          apikey: supabaseAnonKey,
+          Authorization: `Bearer ${supabaseAnonKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          email,
+          password,
+        }),
+      }
+    );
+
+    const result = await response.json();
+
+    if (!response.ok) {
+      throw new Error(
+        result?.error_description ||
+          result?.msg ||
+          result?.message ||
+          'No se pudo iniciar sesión.'
+      );
+    }
+
+    return result as LoginResult;
+  } finally {
+    window.clearTimeout(timeout);
+  }
+}
+
+function saveSessionInBrowser(result: LoginResult) {
+  const expiresAt = Math.floor(Date.now() / 1000) + Number(result.expires_in || 3600);
+
+  const supabaseSession = {
+    access_token: result.access_token,
+    refresh_token: result.refresh_token,
+    expires_in: result.expires_in,
+    expires_at: expiresAt,
+    token_type: result.token_type || 'bearer',
+    user: result.user,
+  };
+
+  const storageKey = getSupabaseStorageKey();
+
+  localStorage.setItem(storageKey, JSON.stringify(supabaseSession));
+
+  localStorage.setItem(
+    'currentUser',
+    JSON.stringify({
+      id: result.user.id,
+      email: result.user.email || '',
+      name:
+        result.user.user_metadata?.full_name ||
+        result.user.user_metadata?.name ||
+        result.user.email?.split('@')[0] ||
+        'Usuario La Segunda',
+      avatar: '',
+      rating: 0,
+      reviewCount: 0,
+      isSeller: false,
+      joinDate: new Date().toISOString().split('T')[0],
+      verificationStatus: 'pending',
+      gender: 'neutral',
+      city: 'Lima',
+      accountType: 'buyer',
+      membershipType: 'free',
+    })
+  );
 }
 
 export default function LoginPage() {
   const router = useRouter();
 
-  const [email, setEmail] = useState('');
+  const [email, setEmail] = useState('hookaps@gmail.com');
   const [password, setPassword] = useState('');
 
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
-
-  useEffect(() => {
-    if (!isSubmitting) return;
-
-    const emergencyTimer = window.setTimeout(() => {
-      setIsSubmitting(false);
-      setError(
-        'La validación tomó demasiado tiempo. El botón fue desbloqueado. Intenta nuevamente.'
-      );
-    }, 18000);
-
-    return () => window.clearTimeout(emergencyTimer);
-  }, [isSubmitting]);
 
   const validateForm = () => {
     if (!email.trim()) {
@@ -131,24 +226,20 @@ export default function LoginPage() {
     try {
       const cleanEmail = email.trim().toLowerCase();
 
-      const { data, error: loginError } = await withTimeout(
-        supabase.auth.signInWithPassword({
-          email: cleanEmail,
-          password,
-        }),
-        15000
-      );
+      const result = await loginWithRestFallback(cleanEmail, password);
 
-      if (loginError) {
-        throw loginError;
-      }
+      saveSessionInBrowser(result);
 
-      if (!data?.user || !data?.session) {
-        throw new Error('No se pudo iniciar sesión. Verifica tus credenciales.');
+      try {
+        await supabase.auth.setSession({
+          access_token: result.access_token,
+          refresh_token: result.refresh_token,
+        });
+      } catch {
+        console.log('[La Segunda] Sesión guardada en localStorage.');
       }
 
       setSuccess('Inicio de sesión correcto. Redirigiendo...');
-      setIsSubmitting(false);
 
       window.setTimeout(() => {
         router.replace('/profile');
@@ -174,13 +265,10 @@ export default function LoginPage() {
     setIsSubmitting(true);
 
     try {
-      const { error: resendError } = await withTimeout(
-        supabase.auth.resend({
-          type: 'signup',
-          email: email.trim().toLowerCase(),
-        }),
-        15000
-      );
+      const { error: resendError } = await supabase.auth.resend({
+        type: 'signup',
+        email: email.trim().toLowerCase(),
+      });
 
       if (resendError) {
         throw resendError;
@@ -196,12 +284,6 @@ export default function LoginPage() {
     } finally {
       setIsSubmitting(false);
     }
-  };
-
-  const handleResetButton = () => {
-    setIsSubmitting(false);
-    setError('');
-    setSuccess('');
   };
 
   return (
@@ -291,17 +373,6 @@ export default function LoginPage() {
             </Button>
           </form>
 
-          {isSubmitting && (
-            <Button
-              type="button"
-              variant="ghost"
-              className="mt-3 w-full text-sm"
-              onClick={handleResetButton}
-            >
-              Desbloquear botón
-            </Button>
-          )}
-
           <div className="mt-4">
             <Button
               type="button"
@@ -336,9 +407,8 @@ export default function LoginPage() {
           </div>
 
           <div className="mt-6 rounded-xl border border-blue-200 bg-blue-50 p-4 text-sm text-blue-800">
-            Si acabas de registrarte, primero confirma tu correo electrónico.
             Si el usuario está en estado “Waiting for verification” en Supabase,
-            no podrá iniciar sesión hasta confirmar el correo.
+            primero confirma el correo o desactiva la confirmación por email para pruebas.
           </div>
         </CardContent>
       </Card>
