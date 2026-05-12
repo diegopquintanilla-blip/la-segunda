@@ -54,13 +54,6 @@ function getFriendlyError(message: string) {
     return 'No se pudo conectar con Supabase. Revisa tus variables de entorno en Vercel.';
   }
 
-  if (
-    text.includes('demorando demasiado') ||
-    text.includes('demoró demasiado')
-  ) {
-    return 'La validación está demorando demasiado. Intenta nuevamente.';
-  }
-
   return message || 'No se pudo iniciar sesión. Intenta nuevamente.';
 }
 
@@ -132,7 +125,7 @@ export default function LoginPage() {
 
       window.setTimeout(() => {
         router.replace('/profile');
-      }, 600);
+      }, 500);
     } catch (err: any) {
       setError(getFriendlyError(err?.message || 'Error al iniciar sesión.'));
       setIsSubmitting(false);
@@ -262,11 +255,6 @@ export default function LoginPage() {
                 Volver al inicio
               </Button>
             </Link>
-          </div>
-
-          <div className="mt-6 rounded-xl border border-blue-200 bg-blue-50 p-4 text-sm text-blue-800">
-            Si Supabase muestra “Waiting for verification”, confirma el correo o
-            desactiva temporalmente la confirmación de email para pruebas.
           </div>
         </CardContent>
       </Card>
