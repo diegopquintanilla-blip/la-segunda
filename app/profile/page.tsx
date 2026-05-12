@@ -21,16 +21,20 @@ import {
   Camera,
   CheckCircle,
   Edit3,
+  Eye,
   Heart,
   Loader2,
   Lock,
   Mail,
   MapPin,
   PackagePlus,
+  Save,
   ShieldCheck,
   Star,
+  Trash2,
   Upload,
   User,
+  X,
 } from 'lucide-react';
 
 type ProfileData = {
@@ -63,12 +67,17 @@ type LocalProduct = {
   ownerId?: string;
   title?: string;
   name?: string;
+  description?: string;
+  category?: string;
+  condition?: string;
   price?: number;
   city?: string;
   status?: string;
   images?: string[];
+  image?: string;
   views?: number;
   favoriteCount?: number;
+  createdAt?: string;
 };
 
 const PLAN_LIMITS: Record<string, number> = {
@@ -103,6 +112,16 @@ function getAccountTypeLabel(accountType?: string | null) {
   return 'Comprador';
 }
 
+function getProductImage(product: LocalProduct) {
+  const image = product.images?.[0] || product.image || '';
+
+  if (isValidImageUrl(image)) {
+    return image;
+  }
+
+  return 'https://placehold.co/300x200?text=La+Segunda';
+}
+
 export default function ProfilePage() {
   const router = useRouter();
   const { user, isAuthenticated, isLoading, updateUser } = useAuth();
@@ -123,6 +142,17 @@ export default function ProfilePage() {
   const [isSavingProfile, setIsSavingProfile] = useState(false);
   const [profileMessage, setProfileMessage] = useState('');
   const [profileError, setProfileError] = useState('');
+
+  const [editingProduct, setEditingProduct] = useState<LocalProduct | null>(null);
+  const [editTitle, setEditTitle] = useState('');
+  const [editDescription, setEditDescription] = useState('');
+  const [editPrice, setEditPrice] = useState('');
+  const [editCity, setEditCity] = useState('');
+  const [editCondition, setEditCondition] = useState('Bueno');
+  const [editImage, setEditImage] = useState('');
+  const [editStatus, setEditStatus] = useState('active');
+  const [productMessage, setProductMessage] = useState('');
+  const [productError, setProductError] = useState('');
 
   useEffect(() => {
     if (!isLoading && !isAuthenticated) {
@@ -157,6 +187,10 @@ export default function ProfilePage() {
   }, [user?.id]);
 
   useEffect(() => {
+    loadLocalProducts();
+  }, []);
+
+  const loadLocalProducts = () => {
     if (typeof window === 'undefined') return;
 
     try {
@@ -175,7 +209,15 @@ export default function ProfilePage() {
     } catch {
       setProducts([]);
     }
-  }, []);
+  };
+
+  const saveProductsToLocalStorage = (updatedProducts: LocalProduct[]) => {
+    setProducts(updatedProducts);
+
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('la-segunda-products', JSON.stringify(updatedProducts));
+    }
+  };
 
   const currentUser = user as any;
 
@@ -392,6 +434,106 @@ export default function ProfilePage() {
       );
     } finally {
       setIsSavingProfile(false);
+    }
+  };
+
+  const openEditProduct = (product: LocalProduct) => {
+    setProductMessage('');
+    setProductError('');
+    setEditingProduct(product);
+    setEditTitle(product.title || product.name || '');
+    setEditDescription(product.description || '');
+    setEditPrice(String(product.price || ''));
+    setEditCity(product.city || '');
+    setEditCondition(product.condition || 'Bueno');
+    setEditImage(product.images?.[0] || product.image || '');
+    setEditStatus(product.status || 'active');
+
+    setTimeout(() => {
+      document
+        .getElementById('editar-producto')
+        ?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 100);
+  };
+
+  const closeEditProduct = () => {
+    setEditingProduct(null);
+    setEditTitle('');
+    setEditDescription('');
+    setEditPrice('');
+    setEditCity('');
+    setEditCondition('Bueno');
+    setEditImage('');
+    setEditStatus('active');
+    setProductError('');
+  };
+
+  const handleSaveProduct = () => {
+    setProductMessage('');
+    setProductError('');
+
+    if (!editingProduct) return;
+
+    if (!editTitle.trim()) {
+      setProductError('Ingresa el nombre del producto.');
+      return;
+    }
+
+    if (!editPrice || Number(editPrice) <= 0) {
+      setProductError('Ingresa un precio válido.');
+      return;
+    }
+
+    if (!editCity.trim()) {
+      setProductError('Ingresa la ciudad del producto.');
+      return;
+    }
+
+    const updatedProducts = products.map((product) => {
+      if (product.id !== editingProduct.id) return product;
+
+      return {
+        ...product,
+        title: editTitle.trim(),
+        name: editTitle.trim(),
+        description: editDescription.trim(),
+        price: Number(editPrice),
+        city: editCity.trim(),
+        condition: editCondition,
+        status: editStatus,
+        images: [
+          editImage.trim() ||
+            product.images?.[0] ||
+            product.image ||
+            'https://placehold.co/300x200?text=La+Segunda',
+        ],
+        image:
+          editImage.trim() ||
+          product.images?.[0] ||
+          product.image ||
+          'https://placehold.co/300x200?text=La+Segunda',
+      };
+    });
+
+    saveProductsToLocalStorage(updatedProducts);
+    setProductMessage('Producto actualizado correctamente.');
+    closeEditProduct();
+  };
+
+  const handleDeleteProduct = (productId: string) => {
+    const confirmed = window.confirm(
+      '¿Seguro que deseas eliminar este producto publicado?'
+    );
+
+    if (!confirmed) return;
+
+    const updatedProducts = products.filter((product) => product.id !== productId);
+
+    saveProductsToLocalStorage(updatedProducts);
+    setProductMessage('Producto eliminado correctamente.');
+
+    if (editingProduct?.id === productId) {
+      closeEditProduct();
     }
   };
 
@@ -811,36 +953,189 @@ export default function ProfilePage() {
           </Card>
         </div>
 
+        {productMessage && (
+          <div className="mb-6 rounded-xl border border-green-200 bg-green-50 p-4 text-sm text-green-700">
+            {productMessage}
+          </div>
+        )}
+
+        {productError && (
+          <div className="mb-6 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+            {productError}
+          </div>
+        )}
+
+        {editingProduct && (
+          <Card id="editar-producto" className="mb-8 border-primary/30">
+            <CardHeader>
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <CardTitle>Editar producto publicado</CardTitle>
+                  <CardDescription>
+                    Cambia descripción, precio, foto, ciudad o estado del producto.
+                  </CardDescription>
+                </div>
+
+                <Button variant="ghost" size="icon" onClick={closeEditProduct}>
+                  <X className="h-4 w-4" />
+                </Button>
+              </div>
+            </CardHeader>
+
+            <CardContent className="space-y-5">
+              <div className="grid gap-5 lg:grid-cols-[220px_1fr]">
+                <div className="rounded-xl border bg-slate-100 p-3">
+                  <p className="mb-2 text-sm font-medium">Vista previa</p>
+
+                  <img
+                    src={
+                      isValidImageUrl(editImage)
+                        ? editImage
+                        : 'https://placehold.co/300x200?text=La+Segunda'
+                    }
+                    alt="Vista previa"
+                    className="h-40 w-full rounded-lg object-cover"
+                  />
+                </div>
+
+                <div className="grid gap-4 md:grid-cols-2">
+                  <div className="space-y-2 md:col-span-2">
+                    <label className="text-sm font-medium">Nombre del producto</label>
+                    <input
+                      value={editTitle}
+                      onChange={(event) => setEditTitle(event.target.value)}
+                      placeholder="Ejemplo: iPhone 12 Pro"
+                      className="w-full rounded-md border bg-background px-3 py-2 text-sm"
+                    />
+                  </div>
+
+                  <div className="space-y-2 md:col-span-2">
+                    <label className="text-sm font-medium">Descripción</label>
+                    <textarea
+                      value={editDescription}
+                      onChange={(event) => setEditDescription(event.target.value)}
+                      placeholder="Describe detalles, estado, accesorios, uso y condiciones..."
+                      className="min-h-24 w-full rounded-md border bg-background px-3 py-2 text-sm"
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">Precio</label>
+                    <input
+                      type="number"
+                      value={editPrice}
+                      onChange={(event) => setEditPrice(event.target.value)}
+                      placeholder="Ejemplo: 900"
+                      className="w-full rounded-md border bg-background px-3 py-2 text-sm"
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">Ciudad</label>
+                    <input
+                      value={editCity}
+                      onChange={(event) => setEditCity(event.target.value)}
+                      placeholder="Ejemplo: Lima"
+                      className="w-full rounded-md border bg-background px-3 py-2 text-sm"
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">Estado físico</label>
+                    <select
+                      value={editCondition}
+                      onChange={(event) => setEditCondition(event.target.value)}
+                      className="w-full rounded-md border bg-background px-3 py-2 text-sm"
+                    >
+                      <option value="Nuevo">Nuevo</option>
+                      <option value="Como nuevo">Como nuevo</option>
+                      <option value="Bueno">Bueno</option>
+                      <option value="Regular">Regular</option>
+                    </select>
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">Estado de publicación</label>
+                    <select
+                      value={editStatus}
+                      onChange={(event) => setEditStatus(event.target.value)}
+                      className="w-full rounded-md border bg-background px-3 py-2 text-sm"
+                    >
+                      <option value="active">Activo</option>
+                      <option value="reserved">Reservado</option>
+                      <option value="sold">Vendido</option>
+                      <option value="pending">Pendiente</option>
+                    </select>
+                  </div>
+
+                  <div className="space-y-2 md:col-span-2">
+                    <label className="text-sm font-medium">
+                      Foto del producto / URL de imagen
+                    </label>
+                    <input
+                      value={editImage}
+                      onChange={(event) => setEditImage(event.target.value)}
+                      placeholder="https://images.unsplash.com/..."
+                      className="w-full rounded-md border bg-background px-3 py-2 text-sm"
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Por ahora puedes pegar una URL de imagen. Luego lo conectamos a Supabase Storage para subir fotos reales.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex flex-col gap-3 sm:flex-row">
+                <Button onClick={handleSaveProduct}>
+                  <Save className="mr-2 h-4 w-4" />
+                  Guardar cambios
+                </Button>
+
+                <Button variant="outline" onClick={closeEditProduct}>
+                  Cancelar
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
         <Card className="mb-8">
           <CardHeader>
             <CardTitle>Mis productos</CardTitle>
-            <CardDescription>Productos publicados desde tu cuenta.</CardDescription>
+            <CardDescription>
+              Productos publicados desde tu cuenta. Puedes editar precio, descripción,
+              foto y estado.
+            </CardDescription>
           </CardHeader>
 
           <CardContent>
             {userProducts.length > 0 ? (
               <div className="grid gap-4 md:grid-cols-2">
-                {userProducts.slice(0, 4).map((product) => {
-                  const imageUrl =
-                    product.images?.[0] ||
-                    'https://placehold.co/300x200?text=La+Segunda';
+                {userProducts.map((product) => {
+                  const imageUrl = getProductImage(product);
 
                   return (
                     <div
                       key={product.id}
-                      className="flex gap-4 rounded-xl border bg-white p-4"
+                      className="flex flex-col gap-4 rounded-xl border bg-white p-4 shadow-sm sm:flex-row"
                     >
                       <img
                         src={imageUrl}
                         alt={product.title || product.name || 'Producto'}
-                        className="h-20 w-20 rounded-lg object-cover"
+                        className="h-28 w-full rounded-lg object-cover sm:w-32"
                       />
 
                       <div className="min-w-0 flex-1">
-                        <div className="mb-1 flex items-center justify-between gap-2">
-                          <h3 className="truncate font-semibold">
-                            {product.title || product.name}
-                          </h3>
+                        <div className="mb-2 flex items-start justify-between gap-3">
+                          <div>
+                            <h3 className="line-clamp-1 font-semibold">
+                              {product.title || product.name}
+                            </h3>
+
+                            <p className="mt-1 text-sm text-muted-foreground">
+                              {product.description || 'Sin descripción'}
+                            </p>
+                          </div>
 
                           <Badge variant="outline">
                             {product.status || 'active'}
@@ -851,9 +1146,44 @@ export default function ProfilePage() {
                           S/ {Number(product.price || 0).toLocaleString('es-PE')}
                         </p>
 
-                        <p className="mt-1 text-sm text-muted-foreground">
-                          {product.city || 'Perú'}
-                        </p>
+                        <div className="mt-2 flex flex-wrap items-center gap-3 text-sm text-muted-foreground">
+                          <span className="flex items-center gap-1">
+                            <MapPin className="h-4 w-4" />
+                            {product.city || 'Perú'}
+                          </span>
+
+                          <span>{product.condition || 'Bueno'}</span>
+
+                          <span className="flex items-center gap-1">
+                            <Eye className="h-4 w-4" />
+                            {product.views || 0}
+                          </span>
+
+                          <span className="flex items-center gap-1">
+                            <Heart className="h-4 w-4" />
+                            {product.favoriteCount || 0}
+                          </span>
+                        </div>
+
+                        <div className="mt-4 flex flex-col gap-2 sm:flex-row">
+                          <Button
+                            size="sm"
+                            onClick={() => openEditProduct(product)}
+                          >
+                            <Edit3 className="mr-2 h-4 w-4" />
+                            Editar
+                          </Button>
+
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="text-red-600 hover:text-red-700"
+                            onClick={() => handleDeleteProduct(product.id)}
+                          >
+                            <Trash2 className="mr-2 h-4 w-4" />
+                            Eliminar
+                          </Button>
+                        </div>
                       </div>
                     </div>
                   );
