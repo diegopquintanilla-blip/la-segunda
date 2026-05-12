@@ -1,2 +1,0 @@
-# la-segunda
-thesecond
