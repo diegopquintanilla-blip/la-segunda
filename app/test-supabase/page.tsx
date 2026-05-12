@@ -14,8 +14,8 @@ export default function TestSupabasePage() {
 
   const testConnection = async () => {
     setLoading(true);
-    setError('');
     setStatus('');
+    setError('');
 
     try {
       const { data: categories, error: categoriesError } = await supabase
