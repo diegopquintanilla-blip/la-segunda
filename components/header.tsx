@@ -14,7 +14,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/lib/auth-context';
 
-const LOGO_SRC = '/branding/lasegunda.png';
+const LOGO_SRC = '/public/lasegunda.png';
 
 export function Header() {
   const router = useRouter();
