@@ -24,6 +24,60 @@ type Gender = 'male' | 'female' | 'neutral';
 
 const LOGO_SRC = '/lasegunda.png';
 
+function getRegisterErrorMessage(err: any) {
+  const rawMessage = String(
+    err?.message ||
+      err?.error_description ||
+      err?.error ||
+      err?.code ||
+      ''
+  ).toLowerCase();
+
+  const rawStatus = String(err?.status || '').toLowerCase();
+
+  if (
+    rawMessage.includes('email rate limit exceeded') ||
+    rawMessage.includes('over_email_send_rate_limit') ||
+    rawMessage.includes('rate limit') ||
+    rawMessage.includes('too many requests') ||
+    rawStatus === '429'
+  ) {
+    return 'Estamos recibiendo muchos registros en este momento. Espera unos minutos e intenta nuevamente.';
+  }
+
+  if (
+    rawMessage.includes('user already registered') ||
+    rawMessage.includes('already registered') ||
+    rawMessage.includes('already exists') ||
+    rawMessage.includes('email already')
+  ) {
+    return 'Este correo ya está registrado. Intenta iniciar sesión o usa otro correo.';
+  }
+
+  if (
+    rawMessage.includes('invalid email') ||
+    rawMessage.includes('signup requires a valid email')
+  ) {
+    return 'Ingresa un correo electrónico válido.';
+  }
+
+  if (
+    rawMessage.includes('password') &&
+    rawMessage.includes('weak')
+  ) {
+    return 'La contraseña es muy débil. Usa una contraseña más segura.';
+  }
+
+  if (
+    rawMessage.includes('network') ||
+    rawMessage.includes('failed to fetch')
+  ) {
+    return 'No se pudo conectar con el servidor. Revisa tu conexión e intenta nuevamente.';
+  }
+
+  return 'No se pudo crear la cuenta. Intenta nuevamente.';
+}
+
 export default function RegisterPage() {
   const router = useRouter();
   const { register } = useAuth();
@@ -47,15 +101,17 @@ export default function RegisterPage() {
   };
 
   const validateForm = () => {
+    const cleanEmail = email.trim().toLowerCase();
+
     if (!name.trim()) {
       return 'Ingresa tu nombre completo.';
     }
 
-    if (!email.trim()) {
+    if (!cleanEmail) {
       return 'Ingresa tu correo electrónico.';
     }
 
-    if (!email.includes('@')) {
+    if (!cleanEmail.includes('@') || !cleanEmail.includes('.')) {
       return 'Ingresa un correo electrónico válido.';
     }
 
@@ -108,7 +164,7 @@ export default function RegisterPage() {
         router.push('/auth/login');
       }, 1600);
     } catch (err: any) {
-      setError(err?.message || 'No se pudo crear la cuenta. Intenta nuevamente.');
+      setError(getRegisterErrorMessage(err));
       setIsSubmitting(false);
     }
   };
@@ -182,6 +238,7 @@ export default function RegisterPage() {
                 placeholder="Ejemplo: Julio Diaz"
                 className="pl-9"
                 disabled={isSubmitting}
+                autoComplete="name"
               />
             </div>
           </div>
@@ -199,6 +256,9 @@ export default function RegisterPage() {
                 placeholder="correo@ejemplo.com"
                 className="pl-9"
                 disabled={isSubmitting}
+                autoComplete="email"
+                autoCapitalize="none"
+                autoCorrect="off"
               />
             </div>
           </div>
@@ -217,6 +277,7 @@ export default function RegisterPage() {
                   placeholder="••••••••"
                   className="pl-9"
                   disabled={isSubmitting}
+                  autoComplete="new-password"
                 />
               </div>
             </div>
@@ -234,6 +295,7 @@ export default function RegisterPage() {
                   placeholder="••••••••"
                   className="pl-9"
                   disabled={isSubmitting}
+                  autoComplete="new-password"
                 />
               </div>
             </div>
@@ -317,6 +379,7 @@ export default function RegisterPage() {
                 placeholder="Ejemplo: Lima"
                 className="pl-9"
                 disabled={isSubmitting}
+                autoComplete="address-level2"
               />
             </div>
           </div>
