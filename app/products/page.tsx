@@ -1,30 +1,18 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import Link from 'next/link';
+import { Filter, Search, SlidersHorizontal, PackageSearch } from 'lucide-react';
 import { Header } from '@/components/header';
 import { ProductCard, type Product } from '@/components/product-card';
-import { mockProducts } from '@/lib/mock-data';
-import { Button } from '@/components/ui/button';
-import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import {
-  ArrowLeft,
-  Filter,
-  PackageSearch,
-  Search,
-  SlidersHorizontal,
-  Star,
-} from 'lucide-react';
+import { Button } from '@/components/ui/button';
 
-type SortOption = 'newest' | 'price-low' | 'price-high' | 'views';
+const PRODUCTS_KEY = 'la-segunda-products';
 
-type ProductWithDate = Product & {
-  createdAt?: string;
-  sellerRating?: number;
-};
+type SortOption = 'recent' | 'price-low' | 'price-high' | 'views';
 
 const categories = [
+  'Todas',
   'Electrónica',
   'Celulares',
   'Laptops',
@@ -38,421 +26,282 @@ const categories = [
   'Otros',
 ];
 
-const conditions = [
-  'Nuevo',
-  'Como nuevo',
-  'Bueno',
-  'Regular',
-];
+function normalizeProduct(product: any): Product {
+  const images =
+    Array.isArray(product.images) && product.images.length > 0
+      ? product.images
+      : product.image
+        ? [product.image]
+        : [];
 
-function normalizeText(value?: string) {
-  return String(value || '')
-    .trim()
-    .toLowerCase()
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '');
-}
-
-function normalizeProduct(product: any): ProductWithDate {
   return {
     id: String(product.id),
-    title: product.title || product.name || 'Producto publicado',
-    name: product.name || product.title || 'Producto publicado',
+    title: product.title || product.name || 'Producto sin título',
+    name: product.name || product.title || 'Producto sin título',
     description: product.description || '',
     category: product.category || 'Otros',
     condition: product.condition || 'Disponible',
     price: Number(product.price || 0),
     city: product.city || 'Perú',
-    images:
-      product.images && product.images.length > 0
-        ? product.images
-        : product.image
-          ? [product.image]
-          : [],
-    image: product.image || product.images?.[0] || '',
+    images,
+    image: product.image || images[0] || '',
     status: product.status || 'active',
     views: Number(product.views || 0),
     favoriteCount: Number(product.favoriteCount || 0),
     isFeatured: Boolean(product.isFeatured),
-    createdAt: product.createdAt || new Date().toISOString(),
-    sellerRating: Number(product.sellerRating || 0),
   };
 }
 
-export default function ProductsPage() {
-  const [clientProducts, setClientProducts] = useState<ProductWithDate[]>([]);
-  const [sortBy, setSortBy] = useState<SortOption>('newest');
-  const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
-  const [selectedCondition, setSelectedCondition] = useState<string | null>(null);
-  const [showFeaturedOnly, setShowFeaturedOnly] = useState(false);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [maxPrice, setMaxPrice] = useState(10000);
+function getStoredProducts(): Product[] {
+  if (typeof window === 'undefined') return [];
 
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
+  try {
+    const rawProducts = localStorage.getItem(PRODUCTS_KEY);
 
-    const savedProducts = localStorage.getItem('la-segunda-products');
+    if (!rawProducts) return [];
 
-    if (!savedProducts) {
-      setClientProducts([]);
-      return;
-    }
+    const parsedProducts = JSON.parse(rawProducts);
 
-    try {
-      const parsedProducts = JSON.parse(savedProducts);
+    if (!Array.isArray(parsedProducts)) return [];
 
-      if (Array.isArray(parsedProducts)) {
-        setClientProducts(parsedProducts.map(normalizeProduct));
-      }
-    } catch {
-      setClientProducts([]);
-    }
-  }, []);
+    const normalizedProducts = parsedProducts.map(normalizeProduct);
 
-  const allProducts = useMemo(() => {
-    const normalizedMockProducts = mockProducts.map(normalizeProduct);
+    const uniqueProducts = new Map<string, Product>();
 
-    const activeClientProducts = clientProducts.filter((product) => {
-      return product.status === 'active' || !product.status;
-    });
+    normalizedProducts.forEach((product) => {
+      const isValidProduct =
+        product.id &&
+        (product.title || product.name) &&
+        Number(product.price || 0) > 0;
 
-    const mergedProducts = [
-      ...activeClientProducts.map((product) => ({
-        ...product,
-        isFeatured: product.isFeatured ?? true,
-      })),
-      ...normalizedMockProducts,
-    ];
+      const isVisibleProduct =
+        product.status === 'active' ||
+        product.status === 'Activo' ||
+        !product.status;
 
-    const uniqueProducts = new Map<string, ProductWithDate>();
-
-    mergedProducts.forEach((product) => {
-      if (product.id) {
-        uniqueProducts.set(product.id, product);
+      if (isValidProduct && isVisibleProduct) {
+        uniqueProducts.set(String(product.id), {
+          ...product,
+          status: 'active',
+        });
       }
     });
 
     return Array.from(uniqueProducts.values());
-  }, [clientProducts]);
+  } catch {
+    return [];
+  }
+}
+
+export default function ProductsPage() {
+  const [products, setProducts] = useState<Product[]>([]);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [selectedCategory, setSelectedCategory] = useState('Todas');
+  const [sortOption, setSortOption] = useState<SortOption>('recent');
+
+  useEffect(() => {
+    setProducts(getStoredProducts());
+  }, []);
 
   const filteredProducts = useMemo(() => {
-    return allProducts.filter((product) => {
-      const productTitle = normalizeText(product.title || product.name);
-      const productDescription = normalizeText(product.description);
-      const productCategory = normalizeText(product.category);
-      const productCondition = normalizeText(product.condition);
-      const productPrice = Number(product.price || 0);
+    let result = [...products];
 
-      const search = normalizeText(searchTerm);
-      const category = normalizeText(selectedCategory || '');
-      const condition = normalizeText(selectedCondition || '');
+    if (searchTerm.trim()) {
+      const cleanSearch = searchTerm.trim().toLowerCase();
 
-      if (search) {
-        const matchesSearch =
-          productTitle.includes(search) ||
-          productDescription.includes(search) ||
-          productCategory.includes(search);
+      result = result.filter((product) => {
+        const title = String(product.title || product.name || '').toLowerCase();
+        const description = String(product.description || '').toLowerCase();
+        const category = String(product.category || '').toLowerCase();
+        const city = String(product.city || '').toLowerCase();
 
-        if (!matchesSearch) return false;
-      }
+        return (
+          title.includes(cleanSearch) ||
+          description.includes(cleanSearch) ||
+          category.includes(cleanSearch) ||
+          city.includes(cleanSearch)
+        );
+      });
+    }
 
-      if (selectedCategory && productCategory !== category) {
-        return false;
-      }
+    if (selectedCategory !== 'Todas') {
+      result = result.filter((product) => {
+        return String(product.category || '').toLowerCase() === selectedCategory.toLowerCase();
+      });
+    }
 
-      if (selectedCondition && productCondition !== condition) {
-        return false;
-      }
+    if (sortOption === 'price-low') {
+      result.sort((a, b) => Number(a.price || 0) - Number(b.price || 0));
+    }
 
-      if (productPrice > maxPrice) {
-        return false;
-      }
+    if (sortOption === 'price-high') {
+      result.sort((a, b) => Number(b.price || 0) - Number(a.price || 0));
+    }
 
-      if (showFeaturedOnly && !product.isFeatured) {
-        return false;
-      }
+    if (sortOption === 'views') {
+      result.sort((a, b) => Number(b.views || 0) - Number(a.views || 0));
+    }
 
-      return true;
-    });
-  }, [
-    allProducts,
-    searchTerm,
-    selectedCategory,
-    selectedCondition,
-    maxPrice,
-    showFeaturedOnly,
-  ]);
+    if (sortOption === 'recent') {
+      result = result.reverse();
+    }
 
-  const sortedProducts = useMemo(() => {
-    return [...filteredProducts].sort((a, b) => {
-      if (sortBy === 'price-low') {
-        return Number(a.price || 0) - Number(b.price || 0);
-      }
+    return result;
+  }, [products, searchTerm, selectedCategory, sortOption]);
 
-      if (sortBy === 'price-high') {
-        return Number(b.price || 0) - Number(a.price || 0);
-      }
-
-      if (sortBy === 'views') {
-        return Number(b.views || 0) - Number(a.views || 0);
-      }
-
-      const dateA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
-      const dateB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
-
-      return dateB - dateA;
-    });
-  }, [filteredProducts, sortBy]);
-
-  const featuredCount = allProducts.filter((product) => product.isFeatured).length;
-
-  const clearFilters = () => {
-    setSelectedCategory(null);
-    setSelectedCondition(null);
-    setShowFeaturedOnly(false);
-    setSearchTerm('');
-    setMaxPrice(10000);
-    setSortBy('newest');
-  };
+  const totalVisibleProducts = filteredProducts.length;
+  const totalFeaturedProducts = filteredProducts.filter((product) => product.isFeatured).length;
 
   return (
     <div className="min-h-screen bg-slate-50">
       <Header />
 
       <main className="mx-auto max-w-7xl px-4 py-8">
-        <div className="mb-6">
-          <Link href="/">
-            <Button variant="outline" size="sm">
-              <ArrowLeft className="mr-2 h-4 w-4" />
-              Volver al inicio
-            </Button>
-          </Link>
-        </div>
-
         <section className="mb-8 rounded-2xl border bg-white p-6 shadow-sm">
-          <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
+          <div className="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
             <div>
-              <Badge className="mb-3 bg-primary/10 text-primary">
+              <Badge className="mb-4 bg-primary/10 text-primary hover:bg-primary/10">
                 Marketplace
               </Badge>
 
-              <h1 className="text-3xl font-bold text-slate-950 md:text-4xl">
+              <h1 className="text-4xl font-bold text-slate-950">
                 Productos
               </h1>
 
-              <p className="mt-2 max-w-2xl text-slate-600">
+              <p className="mt-3 text-slate-600">
                 Explora productos publicados por vendedores de La Segunda.
               </p>
             </div>
 
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-              <div className="rounded-xl bg-slate-50 p-4 text-center">
+            <div className="grid grid-cols-3 gap-3">
+              <div className="rounded-xl bg-slate-50 px-6 py-4 text-center">
                 <p className="text-xs text-slate-500">Total</p>
-                <p className="text-2xl font-bold">{allProducts.length}</p>
-              </div>
-
-              <div className="rounded-xl bg-slate-50 p-4 text-center">
-                <p className="text-xs text-slate-500">Destacados</p>
-                <p className="text-2xl font-bold text-amber-600">
-                  {featuredCount}
+                <p className="text-2xl font-bold text-slate-950">
+                  {totalVisibleProducts}
                 </p>
               </div>
 
-              <div className="rounded-xl bg-slate-50 p-4 text-center">
+              <div className="rounded-xl bg-slate-50 px-6 py-4 text-center">
+                <p className="text-xs text-slate-500">Destacados</p>
+                <p className="text-2xl font-bold text-amber-600">
+                  {totalFeaturedProducts}
+                </p>
+              </div>
+
+              <div className="rounded-xl bg-slate-50 px-6 py-4 text-center">
                 <p className="text-xs text-slate-500">Mostrando</p>
                 <p className="text-2xl font-bold text-primary">
-                  {sortedProducts.length}
+                  {totalVisibleProducts}
                 </p>
               </div>
             </div>
           </div>
         </section>
 
-        <div className="grid gap-6 lg:grid-cols-4">
-          <aside className="lg:col-span-1">
-            <Card className="sticky top-24 space-y-6 rounded-2xl border-slate-200 bg-white p-4 shadow-sm">
-              <div className="flex items-center gap-2">
-                <Filter className="h-5 w-5 text-primary" />
-                <h2 className="font-bold">Filtros</h2>
-              </div>
+        <section className="grid gap-6 lg:grid-cols-[280px_1fr]">
+          <aside className="h-fit rounded-2xl border bg-white p-5 shadow-sm">
+            <div className="mb-6 flex items-center gap-2">
+              <Filter className="h-5 w-5 text-primary" />
+              <h2 className="text-lg font-bold">Filtros</h2>
+            </div>
 
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Buscar producto</label>
-                <div className="relative">
-                  <Search className="absolute left-3 top-3 h-4 w-4 text-slate-400" />
-                  <input
-                    value={searchTerm}
-                    onChange={(event) => setSearchTerm(event.target.value)}
-                    placeholder="Ejemplo: laptop, celular..."
-                    className="w-full rounded-md border bg-background px-3 py-2 pl-9 text-sm"
-                  />
-                </div>
-              </div>
+            <div className="mb-8 space-y-3">
+              <label className="text-sm font-medium">Buscar producto</label>
 
-              <div>
-                <h3 className="mb-3 text-sm font-semibold">Categoría</h3>
+              <div className="relative">
+                <Search className="absolute left-3 top-3 h-4 w-4 text-slate-400" />
 
-                <div className="space-y-2">
-                  <button
-                    type="button"
-                    onClick={() => setSelectedCategory(null)}
-                    className={`block w-full rounded-lg px-3 py-2 text-left text-sm transition ${
-                      selectedCategory === null
-                        ? 'bg-primary text-primary-foreground'
-                        : 'hover:bg-slate-100'
-                    }`}
-                  >
-                    Todas
-                  </button>
-
-                  {categories.map((category) => (
-                    <button
-                      key={category}
-                      type="button"
-                      onClick={() => setSelectedCategory(category)}
-                      className={`block w-full rounded-lg px-3 py-2 text-left text-sm transition ${
-                        selectedCategory === category
-                          ? 'bg-primary text-primary-foreground'
-                          : 'hover:bg-slate-100'
-                      }`}
-                    >
-                      {category}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div>
-                <h3 className="mb-3 text-sm font-semibold">Condición</h3>
-
-                <div className="space-y-2">
-                  <button
-                    type="button"
-                    onClick={() => setSelectedCondition(null)}
-                    className={`block w-full rounded-lg px-3 py-2 text-left text-sm transition ${
-                      selectedCondition === null
-                        ? 'bg-primary text-primary-foreground'
-                        : 'hover:bg-slate-100'
-                    }`}
-                  >
-                    Todas
-                  </button>
-
-                  {conditions.map((condition) => (
-                    <button
-                      key={condition}
-                      type="button"
-                      onClick={() => setSelectedCondition(condition)}
-                      className={`block w-full rounded-lg px-3 py-2 text-left text-sm transition ${
-                        selectedCondition === condition
-                          ? 'bg-primary text-primary-foreground'
-                          : 'hover:bg-slate-100'
-                      }`}
-                    >
-                      {condition}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div>
-                <h3 className="mb-3 text-sm font-semibold">Precio máximo</h3>
-
-                <div className="space-y-3 text-sm">
-                  <div className="flex justify-between text-slate-600">
-                    <span>S/ 0</span>
-                    <span>S/ {maxPrice.toLocaleString('es-PE')}</span>
-                  </div>
-
-                  <input
-                    type="range"
-                    min="0"
-                    max="10000"
-                    step="100"
-                    value={maxPrice}
-                    onChange={(event) => setMaxPrice(Number(event.target.value))}
-                    className="w-full"
-                  />
-                </div>
-              </div>
-
-              <div className="rounded-xl border border-amber-100 bg-amber-50 p-3">
-                <label className="flex cursor-pointer items-center gap-2 text-sm font-medium text-amber-800">
-                  <input
-                    type="checkbox"
-                    checked={showFeaturedOnly}
-                    onChange={(event) =>
-                      setShowFeaturedOnly(event.target.checked)
-                    }
-                  />
-                  Ver solo destacados
-                </label>
-              </div>
-
-              <Button variant="outline" className="w-full" onClick={clearFilters}>
-                Limpiar filtros
-              </Button>
-            </Card>
-          </aside>
-
-          <section className="lg:col-span-3">
-            <div className="mb-6 flex flex-col gap-4 rounded-2xl border bg-white p-4 shadow-sm sm:flex-row sm:items-center sm:justify-between">
-              <div>
-                <p className="font-semibold">
-                  Mostrando {sortedProducts.length} productos
-                </p>
-                <p className="text-sm text-slate-500">
-                  Incluye productos publicados por clientes y productos base.
-                </p>
-              </div>
-
-              <div className="flex items-center gap-2">
-                <SlidersHorizontal className="h-4 w-4 text-slate-500" />
-
-                <select
-                  value={sortBy}
-                  onChange={(event) => setSortBy(event.target.value as SortOption)}
-                  className="rounded-lg border bg-background px-3 py-2 text-sm"
-                >
-                  <option value="newest">Más recientes</option>
-                  <option value="price-low">Precio: menor a mayor</option>
-                  <option value="price-high">Precio: mayor a menor</option>
-                  <option value="views">Más vistos</option>
-                </select>
+                <input
+                  value={searchTerm}
+                  onChange={(event) => setSearchTerm(event.target.value)}
+                  placeholder="Ejemplo: laptop, celular..."
+                  className="h-10 w-full rounded-lg border bg-white px-3 pl-9 text-sm outline-none transition focus:border-primary"
+                />
               </div>
             </div>
 
-            {sortedProducts.length > 0 ? (
+            <div className="space-y-3">
+              <h3 className="text-sm font-bold">Categoría</h3>
+
+              <div className="space-y-1">
+                {categories.map((category) => (
+                  <button
+                    key={category}
+                    type="button"
+                    onClick={() => setSelectedCategory(category)}
+                    className={`w-full rounded-lg px-3 py-2 text-left text-sm transition ${
+                      selectedCategory === category
+                        ? 'bg-primary text-primary-foreground'
+                        : 'text-slate-700 hover:bg-slate-100'
+                    }`}
+                  >
+                    {category}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </aside>
+
+          <section>
+            <div className="mb-6 rounded-2xl border bg-white p-4 shadow-sm">
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <h2 className="text-lg font-bold">
+                    Mostrando {totalVisibleProducts} productos
+                  </h2>
+
+                  <p className="text-sm text-slate-600">
+                    Solo se muestran productos activos publicados por usuarios.
+                  </p>
+                </div>
+
+                <div className="flex items-center gap-3">
+                  <SlidersHorizontal className="h-4 w-4 text-primary" />
+
+                  <select
+                    value={sortOption}
+                    onChange={(event) =>
+                      setSortOption(event.target.value as SortOption)
+                    }
+                    className="h-10 rounded-lg border bg-white px-3 text-sm outline-none transition focus:border-primary"
+                  >
+                    <option value="recent">Más recientes</option>
+                    <option value="price-low">Menor precio</option>
+                    <option value="price-high">Mayor precio</option>
+                    <option value="views">Más vistos</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            {filteredProducts.length > 0 ? (
               <div className="grid gap-5 sm:grid-cols-2 xl:grid-cols-3">
-                {sortedProducts.map((product) => (
+                {filteredProducts.map((product) => (
                   <ProductCard key={product.id} product={product} />
                 ))}
               </div>
             ) : (
-              <div className="rounded-2xl border border-dashed bg-white p-12 text-center">
-                <PackageSearch className="mx-auto mb-4 h-14 w-14 text-slate-400" />
+              <div className="rounded-2xl border border-dashed bg-white p-12 text-center shadow-sm">
+                <PackageSearch className="mx-auto mb-4 h-16 w-16 text-slate-400" />
 
-                <h2 className="mb-2 text-2xl font-bold">
-                  No se encontraron productos
-                </h2>
+                <h3 className="text-2xl font-bold text-slate-950">
+                  No hay productos publicados
+                </h3>
 
-                <p className="mb-6 text-slate-600">
-                  Cambia los filtros o publica un producto nuevo.
+                <p className="mx-auto mt-3 max-w-md text-slate-600">
+                  Todavía no hay productos activos para mostrar. Publica el primer
+                  artículo desde tu panel de vendedor.
                 </p>
 
-                <div className="flex flex-col justify-center gap-3 sm:flex-row">
-                  <Button onClick={clearFilters} variant="outline">
-                    Limpiar filtros
+                <div className="mt-6">
+                  <Button asChild>
+                    <a href="/seller/dashboard">Publicar producto</a>
                   </Button>
-
-                  <Link href="/seller/dashboard">
-                    <Button>Publicar producto</Button>
-                  </Link>
                 </div>
               </div>
             )}
           </section>
-        </div>
+        </section>
       </main>
     </div>
   );
