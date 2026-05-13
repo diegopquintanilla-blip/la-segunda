@@ -83,13 +83,13 @@ const PLAN_CONFIG: Record<PlanType, PlanConfig> = {
     price: 'S/ 0',
     badgeClass: 'bg-slate-100 text-slate-800',
   },
-  plus: {
-    name: 'La Segunda Plus',
-    limit: 20,
-    commissionRate: 5,
-    price: 'S/ 19.90/mes',
-    badgeClass: 'bg-blue-100 text-blue-800',
-  },
+ plus: {
+  name: 'La Segunda Plus',
+  limit: 5,
+  commissionRate: 5,
+  price: 'S/ 19.90/mes',
+  badgeClass: 'bg-blue-100 text-blue-800',
+},
   premium: {
     name: 'La Segunda Premium',
     limit: Infinity,
