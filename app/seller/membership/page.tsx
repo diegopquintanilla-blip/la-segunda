@@ -550,7 +550,7 @@ export default function MembershipPage() {
                     <tr className="border-b">
                       <td className="p-4 font-medium">Publicaciones</td>
                       <td className="p-4 text-center">3</td>
-                      <td className="p-4 text-center">20</td>
+                      <td className="p-4 text-center">5</td>
                       <td className="p-4 text-center">Ilimitadas</td>
                     </tr>
 
