@@ -2,15 +2,39 @@
 
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import { useState } from 'react';
+import {
+  Heart,
+  MessageSquare,
+  Search,
+  Store,
+  User,
+  LogOut,
+} from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/lib/auth-context';
-import { Search, Heart, MessageSquare, User, Menu, LogOut } from 'lucide-react';
-import { useState } from 'react';
+
+const LOGO_SRC = '/branding/lasegunda.png';
 
 export function Header() {
-  const { user, logout, isAuthenticated } = useAuth();
   const router = useRouter();
-  const [menuOpen, setMenuOpen] = useState(false);
+  const { user, isAuthenticated, logout } = useAuth();
+
+  const [searchTerm, setSearchTerm] = useState('');
+  const [logoError, setLogoError] = useState(false);
+
+  const handleSearch = (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+
+    const cleanSearch = searchTerm.trim();
+
+    if (!cleanSearch) {
+      router.push('/products');
+      return;
+    }
+
+    router.push(`/products?search=${encodeURIComponent(cleanSearch)}`);
+  };
 
   const handleLogout = () => {
     logout();
@@ -18,106 +42,116 @@ export function Header() {
   };
 
   return (
-    <header className="border-b bg-card sticky top-0 z-50">
-      <div className="container mx-auto px-4 py-4">
-        <div className="flex items-center justify-between gap-4">
-          {/* Logo */}
-          <Link href="/" className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-lg bg-primary text-primary-foreground flex items-center justify-center font-bold">
-              S
-            </div>
-            <span className="font-bold text-lg">La Segunda</span>
-          </Link>
-
-          {/* Search */}
-          <div className="hidden md:flex flex-1 max-w-md">
-            <div className="flex items-center gap-2 bg-muted rounded-lg px-3 py-2 w-full">
-              <Search className="w-4 h-4 text-muted-foreground" />
-              <input
-                type="text"
-                placeholder="Buscar productos..."
-                className="bg-transparent outline-none text-sm flex-1"
-              />
-            </div>
-          </div>
-
-          {/* Navigation */}
-          {isAuthenticated && user ? (
-            <div className="flex items-center gap-2 md:gap-4">
-              <button className="hidden sm:inline-flex p-2 hover:bg-muted rounded-lg transition">
-                <Heart className="w-5 h-5" />
-              </button>
-              <button className="hidden sm:inline-flex p-2 hover:bg-muted rounded-lg transition">
-                <MessageSquare className="w-5 h-5" />
-              </button>
-
-              {user.isSeller && (
-                <Link href="/seller/dashboard">
-                  <Button variant="outline" size="sm" className="hidden sm:inline-flex">
-                    Mi tienda
-                  </Button>
-                </Link>
-              )}
-
-              <button
-                onClick={() => setMenuOpen(!menuOpen)}
-                className="p-2 hover:bg-muted rounded-lg transition"
-              >
-                <User className="w-5 h-5" />
-              </button>
-
-              {menuOpen && (
-                <div className="absolute top-16 right-4 bg-card border rounded-lg shadow-lg p-2 min-w-48">
-                  <Link href="/profile">
-                    <button className="w-full text-left px-4 py-2 hover:bg-muted rounded transition">
-                      Mi perfil
-                    </button>
-                  </Link>
-                  {user.isSeller && (
-                    <Link href="/seller/dashboard">
-                      <button className="w-full text-left px-4 py-2 hover:bg-muted rounded transition">
-                        Mi tienda
-                      </button>
-                    </Link>
-                  )}
-                  <button
-                    onClick={handleLogout}
-                    className="w-full text-left px-4 py-2 hover:bg-destructive/10 text-destructive rounded transition flex items-center gap-2"
-                  >
-                    <LogOut className="w-4 h-4" />
-                    Cerrar sesión
-                  </button>
-                </div>
-              )}
-            </div>
+    <header className="sticky top-0 z-50 w-full border-b bg-white/95 backdrop-blur">
+      <div className="mx-auto flex h-16 max-w-7xl items-center justify-between gap-4 px-4">
+        <Link href="/" className="flex items-center gap-3">
+          {!logoError ? (
+            <img
+              src={LOGO_SRC}
+              alt="La Segunda"
+              onError={() => setLogoError(true)}
+              className="h-10 w-auto max-w-[190px] object-contain"
+            />
           ) : (
             <div className="flex items-center gap-2">
-              <Link href="/auth/login">
-                <Button variant="outline" size="sm">
-                  Inicia sesión
-                </Button>
-              </Link>
-              <Link href="/auth/register">
-                <Button size="sm">
-                  Registrarse
-                </Button>
-              </Link>
+              <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary text-sm font-bold text-primary-foreground">
+                S
+              </div>
+
+              <span className="text-xl font-bold text-slate-950">
+                La Segunda
+              </span>
             </div>
           )}
-        </div>
+        </Link>
 
-        {/* Mobile Search */}
-        <div className="md:hidden mt-4">
-          <div className="flex items-center gap-2 bg-muted rounded-lg px-3 py-2">
-            <Search className="w-4 h-4 text-muted-foreground" />
+        <form
+          onSubmit={handleSearch}
+          className="hidden flex-1 justify-center md:flex"
+        >
+          <div className="relative w-full max-w-md">
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
+
             <input
-              type="text"
+              type="search"
+              value={searchTerm}
+              onChange={(event) => setSearchTerm(event.target.value)}
               placeholder="Buscar productos..."
-              className="bg-transparent outline-none text-sm flex-1"
+              className="h-10 w-full rounded-lg border bg-slate-100 px-4 pl-10 text-sm outline-none transition focus:border-primary focus:bg-white"
             />
           </div>
-        </div>
+        </form>
+
+        <nav className="flex items-center gap-1">
+          <Link href="/favorites">
+            <Button variant="ghost" size="icon" title="Favoritos">
+              <Heart className="h-5 w-5" />
+            </Button>
+          </Link>
+
+          <Link href="/messages">
+            <Button variant="ghost" size="icon" title="Mensajes">
+              <MessageSquare className="h-5 w-5" />
+            </Button>
+          </Link>
+
+          {isAuthenticated ? (
+            <>
+              <Link href="/profile">
+                <Button variant="ghost" size="icon" title="Mi perfil">
+                  <User className="h-5 w-5" />
+                </Button>
+              </Link>
+
+              <Link href="/seller/dashboard" className="hidden sm:block">
+                <Button variant="outline" size="sm">
+                  <Store className="mr-2 h-4 w-4" />
+                  Mi tienda
+                </Button>
+              </Link>
+
+              <Button
+                variant="ghost"
+                size="icon"
+                title="Cerrar sesión"
+                onClick={handleLogout}
+              >
+                <LogOut className="h-5 w-5" />
+              </Button>
+            </>
+          ) : (
+            <>
+              <Link href="/auth/login">
+                <Button variant="ghost" size="sm">
+                  Iniciar sesión
+                </Button>
+              </Link>
+
+              <Link href="/auth/register" className="hidden sm:block">
+                <Button size="sm">Registrarme</Button>
+              </Link>
+            </>
+          )}
+        </nav>
+      </div>
+
+      <div className="border-t px-4 py-2 md:hidden">
+        <form onSubmit={handleSearch}>
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
+
+            <input
+              type="search"
+              value={searchTerm}
+              onChange={(event) => setSearchTerm(event.target.value)}
+              placeholder="Buscar productos..."
+              className="h-10 w-full rounded-lg border bg-slate-100 px-4 pl-10 text-sm outline-none transition focus:border-primary focus:bg-white"
+            />
+          </div>
+        </form>
       </div>
     </header>
   );
 }
+
+export default Header;
