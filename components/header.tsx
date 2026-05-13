@@ -14,11 +14,11 @@ import {
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/lib/auth-context';
 
-const LOGO_SRC = '/public/lasegunda.png';
+const LOGO_SRC = '/lasegunda.png';
 
 export function Header() {
   const router = useRouter();
-  const { user, isAuthenticated, logout } = useAuth();
+  const { isAuthenticated, logout } = useAuth();
 
   const [searchTerm, setSearchTerm] = useState('');
   const [logoError, setLogoError] = useState(false);
@@ -50,7 +50,7 @@ export function Header() {
               src={LOGO_SRC}
               alt="La Segunda"
               onError={() => setLogoError(true)}
-              className="h-10 w-auto max-w-[190px] object-contain"
+              className="h-11 w-auto max-w-[210px] object-contain"
             />
           ) : (
             <div className="flex items-center gap-2">
