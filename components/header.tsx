@@ -43,22 +43,24 @@ export function Header() {
 
   return (
     <header className="sticky top-0 z-50 w-full border-b bg-white/95 backdrop-blur">
-      <div className="mx-auto flex h-16 max-w-7xl items-center justify-between gap-4 px-4">
-        <Link href="/" className="flex items-center gap-3">
+      <div className="mx-auto flex h-20 max-w-7xl items-center justify-between gap-4 px-4">
+        <Link href="/" className="flex shrink-0 items-center">
           {!logoError ? (
-            <img
-              src={LOGO_SRC}
-              alt="La Segunda"
-              onError={() => setLogoError(true)}
-              className="h-11 w-auto max-w-[210px] object-contain"
-            />
+            <div className="flex h-14 w-[240px] items-center overflow-hidden rounded-md bg-white sm:w-[270px]">
+              <img
+                src={LOGO_SRC}
+                alt="La Segunda"
+                onError={() => setLogoError(true)}
+                className="h-full w-full object-cover object-center"
+              />
+            </div>
           ) : (
             <div className="flex items-center gap-2">
-              <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary text-sm font-bold text-primary-foreground">
+              <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-primary text-base font-bold text-primary-foreground">
                 S
               </div>
 
-              <span className="text-xl font-bold text-slate-950">
+              <span className="text-2xl font-bold text-slate-950">
                 La Segunda
               </span>
             </div>
@@ -82,7 +84,7 @@ export function Header() {
           </div>
         </form>
 
-        <nav className="flex items-center gap-1">
+        <nav className="flex shrink-0 items-center gap-1">
           <Link href="/favorites">
             <Button variant="ghost" size="icon" title="Favoritos">
               <Heart className="h-5 w-5" />
