@@ -1,13 +1,19 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { Filter, Search, SlidersHorizontal, PackageSearch } from 'lucide-react';
+import Link from 'next/link';
+import {
+  Filter,
+  Search,
+  SlidersHorizontal,
+  PackageSearch,
+  RefreshCw,
+} from 'lucide-react';
 import { Header } from '@/components/header';
 import { ProductCard, type Product } from '@/components/product-card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-
-const PRODUCTS_KEY = 'la-segunda-products';
+import { listProducts } from '@/lib/supabase/products';
 
 type SortOption = 'recent' | 'price-low' | 'price-high' | 'views';
 
@@ -26,81 +32,39 @@ const categories = [
   'Otros',
 ];
 
-function normalizeProduct(product: any): Product {
-  const images =
-    Array.isArray(product.images) && product.images.length > 0
-      ? product.images
-      : product.image
-        ? [product.image]
-        : [];
-
-  return {
-    id: String(product.id),
-    title: product.title || product.name || 'Producto sin título',
-    name: product.name || product.title || 'Producto sin título',
-    description: product.description || '',
-    category: product.category || 'Otros',
-    condition: product.condition || 'Disponible',
-    price: Number(product.price || 0),
-    city: product.city || 'Perú',
-    images,
-    image: product.image || images[0] || '',
-    status: product.status || 'active',
-    views: Number(product.views || 0),
-    favoriteCount: Number(product.favoriteCount || 0),
-    isFeatured: Boolean(product.isFeatured),
-  };
-}
-
-function getStoredProducts(): Product[] {
-  if (typeof window === 'undefined') return [];
-
-  try {
-    const rawProducts = localStorage.getItem(PRODUCTS_KEY);
-
-    if (!rawProducts) return [];
-
-    const parsedProducts = JSON.parse(rawProducts);
-
-    if (!Array.isArray(parsedProducts)) return [];
-
-    const normalizedProducts = parsedProducts.map(normalizeProduct);
-
-    const uniqueProducts = new Map<string, Product>();
-
-    normalizedProducts.forEach((product) => {
-      const isValidProduct =
-        product.id &&
-        (product.title || product.name) &&
-        Number(product.price || 0) > 0;
-
-      const isVisibleProduct =
-        product.status === 'active' ||
-        product.status === 'Activo' ||
-        !product.status;
-
-      if (isValidProduct && isVisibleProduct) {
-        uniqueProducts.set(String(product.id), {
-          ...product,
-          status: 'active',
-        });
-      }
-    });
-
-    return Array.from(uniqueProducts.values());
-  } catch {
-    return [];
-  }
-}
-
 export default function ProductsPage() {
   const [products, setProducts] = useState<Product[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('Todas');
   const [sortOption, setSortOption] = useState<SortOption>('recent');
 
+  const [isLoading, setIsLoading] = useState(true);
+  const [errorMessage, setErrorMessage] = useState('');
+
+  const loadProducts = async () => {
+    setIsLoading(true);
+    setErrorMessage('');
+
+    try {
+      const urlParams = new URLSearchParams(window.location.search);
+      const searchFromUrl = urlParams.get('search') || '';
+
+      setSearchTerm(searchFromUrl);
+
+      const supabaseProducts = await listProducts();
+
+      setProducts(supabaseProducts as Product[]);
+    } catch (error: any) {
+      setErrorMessage(
+        error?.message || 'No se pudieron cargar los productos desde Supabase.'
+      );
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   useEffect(() => {
-    setProducts(getStoredProducts());
+    loadProducts();
   }, []);
 
   const filteredProducts = useMemo(() => {
@@ -126,7 +90,10 @@ export default function ProductsPage() {
 
     if (selectedCategory !== 'Todas') {
       result = result.filter((product) => {
-        return String(product.category || '').toLowerCase() === selectedCategory.toLowerCase();
+        return (
+          String(product.category || '').toLowerCase() ===
+          selectedCategory.toLowerCase()
+        );
       });
     }
 
@@ -143,14 +110,23 @@ export default function ProductsPage() {
     }
 
     if (sortOption === 'recent') {
-      result = result.reverse();
+      result.sort((a: any, b: any) => {
+        const dateA = new Date(a.createdAt || 0).getTime();
+        const dateB = new Date(b.createdAt || 0).getTime();
+
+        return dateB - dateA;
+      });
     }
 
     return result;
   }, [products, searchTerm, selectedCategory, sortOption]);
 
+  const totalProducts = products.length;
   const totalVisibleProducts = filteredProducts.length;
-  const totalFeaturedProducts = filteredProducts.filter((product) => product.isFeatured).length;
+
+  const totalFeaturedProducts = products.filter((product) => {
+    return Boolean(product.isFeatured);
+  }).length;
 
   return (
     <div className="min-h-screen bg-slate-50">
@@ -177,21 +153,21 @@ export default function ProductsPage() {
               <div className="rounded-xl bg-slate-50 px-6 py-4 text-center">
                 <p className="text-xs text-slate-500">Total</p>
                 <p className="text-2xl font-bold text-slate-950">
-                  {totalVisibleProducts}
+                  {isLoading ? '...' : totalProducts}
                 </p>
               </div>
 
               <div className="rounded-xl bg-slate-50 px-6 py-4 text-center">
                 <p className="text-xs text-slate-500">Destacados</p>
                 <p className="text-2xl font-bold text-amber-600">
-                  {totalFeaturedProducts}
+                  {isLoading ? '...' : totalFeaturedProducts}
                 </p>
               </div>
 
               <div className="rounded-xl bg-slate-50 px-6 py-4 text-center">
                 <p className="text-xs text-slate-500">Mostrando</p>
                 <p className="text-2xl font-bold text-primary">
-                  {totalVisibleProducts}
+                  {isLoading ? '...' : totalVisibleProducts}
                 </p>
               </div>
             </div>
@@ -206,7 +182,9 @@ export default function ProductsPage() {
             </div>
 
             <div className="mb-8 space-y-3">
-              <label className="text-sm font-medium">Buscar producto</label>
+              <label className="text-sm font-medium">
+                Buscar producto
+              </label>
 
               <div className="relative">
                 <Search className="absolute left-3 top-3 h-4 w-4 text-slate-400" />
@@ -247,15 +225,26 @@ export default function ProductsPage() {
               <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                   <h2 className="text-lg font-bold">
-                    Mostrando {totalVisibleProducts} productos
+                    {isLoading
+                      ? 'Cargando productos...'
+                      : `Mostrando ${totalVisibleProducts} productos`}
                   </h2>
 
                   <p className="text-sm text-slate-600">
-                    Solo se muestran productos activos publicados por usuarios.
+                    Productos activos publicados en Supabase.
                   </p>
                 </div>
 
                 <div className="flex items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={loadProducts}
+                    className="flex h-10 items-center gap-2 rounded-lg border bg-white px-3 text-sm transition hover:bg-slate-100"
+                  >
+                    <RefreshCw className="h-4 w-4" />
+                    Actualizar
+                  </button>
+
                   <SlidersHorizontal className="h-4 w-4 text-primary" />
 
                   <select
@@ -274,7 +263,22 @@ export default function ProductsPage() {
               </div>
             </div>
 
-            {filteredProducts.length > 0 ? (
+            {errorMessage && (
+              <div className="mb-6 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+                {errorMessage}
+              </div>
+            )}
+
+            {isLoading ? (
+              <div className="grid gap-5 sm:grid-cols-2 xl:grid-cols-3">
+                {[1, 2, 3].map((item) => (
+                  <div
+                    key={item}
+                    className="h-[420px] animate-pulse rounded-2xl border bg-white shadow-sm"
+                  />
+                ))}
+              </div>
+            ) : filteredProducts.length > 0 ? (
               <div className="grid gap-5 sm:grid-cols-2 xl:grid-cols-3">
                 {filteredProducts.map((product) => (
                   <ProductCard key={product.id} product={product} />
@@ -294,9 +298,9 @@ export default function ProductsPage() {
                 </p>
 
                 <div className="mt-6">
-                  <Button asChild>
-                    <a href="/seller/dashboard">Publicar producto</a>
-                  </Button>
+                  <Link href="/seller/dashboard">
+                    <Button>Publicar producto</Button>
+                  </Link>
                 </div>
               </div>
             )}
