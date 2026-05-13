@@ -5,26 +5,28 @@ import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Header } from '@/components/header';
 import { useAuth } from '@/lib/auth-context';
-import { mockProducts } from '@/lib/mock-data';
+import {
+  getProductById,
+  incrementProductViews,
+} from '@/lib/supabase/products';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import {
   ArrowLeft,
   CheckCircle,
-  CreditCard,
   Eye,
   Heart,
   ImageIcon,
+  Loader2,
   Lock,
   MapPin,
   MessageCircle,
   ShieldCheck,
   Star,
   User,
-  X,
 } from 'lucide-react';
 
-type ProductItem = {
+type ProductDetail = {
   id: string;
   sellerId?: string;
   userId?: string;
@@ -41,190 +43,23 @@ type ProductItem = {
   status?: string;
   views?: number;
   favoriteCount?: number;
+  isFeatured?: boolean;
   createdAt?: string;
+  updatedAt?: string;
 };
 
-type PurchaseIntent = {
+type ContactRequest = {
   id: string;
   productId: string;
   productTitle: string;
   sellerId: string;
   buyerId: string;
   amount: number;
-  commissionRate: number;
-  commissionAmount: number;
-  sellerAmount: number;
-  status: 'pre_authorized' | 'pending' | 'completed' | 'cancelled';
-  cardLast4: string;
+  status: 'pending_contact';
   createdAt: string;
 };
 
-const PRODUCTS_KEY = 'la-segunda-products';
-const PRODUCT_VIEWS_KEY = 'la-segunda-product-views';
-const PURCHASE_INTENTS_KEY = 'la-segunda-purchase-intents';
-
-const DEFAULT_PRODUCT_IMAGE = 'https://placehold.co/800x600?text=La+Segunda';
-
-function normalizeProduct(product: any): ProductItem {
-  return {
-    id: String(product.id),
-    sellerId: product.sellerId || product.userId || product.ownerId || '',
-    userId: product.userId || product.sellerId || product.ownerId || '',
-    ownerId: product.ownerId || product.sellerId || product.userId || '',
-    title: product.title || product.name || 'Producto publicado',
-    name: product.name || product.title || 'Producto publicado',
-    description: product.description || 'Sin descripción disponible.',
-    category: product.category || 'Otros',
-    condition: product.condition || 'Disponible',
-    price: Number(product.price || 0),
-    city: product.city || 'Perú',
-    images:
-      product.images && product.images.length > 0
-        ? product.images
-        : product.image
-          ? [product.image]
-          : [DEFAULT_PRODUCT_IMAGE],
-    image: product.image || product.images?.[0] || DEFAULT_PRODUCT_IMAGE,
-    status: product.status || 'active',
-    views: Number(product.views || 0),
-    favoriteCount: Number(product.favoriteCount || 0),
-    createdAt: product.createdAt || new Date().toISOString(),
-  };
-}
-
-function getStoredProducts(): ProductItem[] {
-  if (typeof window === 'undefined') return [];
-
-  try {
-    const rawProducts = localStorage.getItem(PRODUCTS_KEY);
-
-    if (!rawProducts) return [];
-
-    const parsedProducts = JSON.parse(rawProducts);
-
-    if (!Array.isArray(parsedProducts)) return [];
-
-    return parsedProducts.map(normalizeProduct);
-  } catch {
-    return [];
-  }
-}
-
-function saveStoredProducts(products: ProductItem[]) {
-  if (typeof window === 'undefined') return;
-
-  localStorage.setItem(PRODUCTS_KEY, JSON.stringify(products));
-}
-
-function getProductViewsMap(): Record<string, number> {
-  if (typeof window === 'undefined') return {};
-
-  try {
-    const rawViews = localStorage.getItem(PRODUCT_VIEWS_KEY);
-
-    if (!rawViews) return {};
-
-    const parsedViews = JSON.parse(rawViews);
-
-    if (!parsedViews || typeof parsedViews !== 'object') return {};
-
-    return parsedViews;
-  } catch {
-    return {};
-  }
-}
-
-function saveProductViewsMap(viewsMap: Record<string, number>) {
-  if (typeof window === 'undefined') return;
-
-  localStorage.setItem(PRODUCT_VIEWS_KEY, JSON.stringify(viewsMap));
-}
-
-function getStoredPurchaseIntents(): PurchaseIntent[] {
-  if (typeof window === 'undefined') return [];
-
-  try {
-    const rawIntents = localStorage.getItem(PURCHASE_INTENTS_KEY);
-
-    if (!rawIntents) return [];
-
-    const parsedIntents = JSON.parse(rawIntents);
-
-    if (!Array.isArray(parsedIntents)) return [];
-
-    return parsedIntents;
-  } catch {
-    return [];
-  }
-}
-
-function savePurchaseIntent(intent: PurchaseIntent) {
-  if (typeof window === 'undefined') return;
-
-  const currentIntents = getStoredPurchaseIntents();
-
-  localStorage.setItem(
-    PURCHASE_INTENTS_KEY,
-    JSON.stringify([intent, ...currentIntents])
-  );
-}
-
-function incrementProductView(productId: string, currentProduct?: ProductItem | null) {
-  if (typeof window === 'undefined') return Number(currentProduct?.views || 0);
-
-  const sessionKey = `la-segunda-viewed-${productId}`;
-
-  if (sessionStorage.getItem(sessionKey)) {
-    const viewsMap = getProductViewsMap();
-    return Number(viewsMap[productId] || currentProduct?.views || 0);
-  }
-
-  sessionStorage.setItem(sessionKey, 'true');
-
-  let newViewCount = Number(currentProduct?.views || 0) + 1;
-
-  try {
-    const storedProducts = getStoredProducts();
-
-    const productExistsInStorage = storedProducts.some((product) => {
-      return String(product.id) === String(productId);
-    });
-
-    if (productExistsInStorage) {
-      const updatedProducts = storedProducts.map((product) => {
-        if (String(product.id) !== String(productId)) return product;
-
-        const currentViews = Number(product.views || 0);
-        newViewCount = currentViews + 1;
-
-        return {
-          ...product,
-          views: newViewCount,
-        };
-      });
-
-      saveStoredProducts(updatedProducts);
-    }
-
-    const viewsMap = getProductViewsMap();
-    const currentViewsFromMap = Number(
-      viewsMap[productId] || currentProduct?.views || 0
-    );
-
-    const finalViews = Math.max(newViewCount, currentViewsFromMap + 1);
-
-    viewsMap[productId] = finalViews;
-    saveProductViewsMap(viewsMap);
-
-    return finalViews;
-  } catch {
-    return newViewCount;
-  }
-}
-
-function getSellerId(product: ProductItem) {
-  return product.sellerId || product.userId || product.ownerId || 'seller-demo';
-}
+const CONTACT_REQUESTS_KEY = 'la-segunda-contact-requests';
 
 function formatPrice(value?: number) {
   return Number(value || 0).toLocaleString('es-PE', {
@@ -239,15 +74,35 @@ function getConditionLabel(condition?: string) {
   const value = condition.toLowerCase();
 
   if (value === 'new' || value === 'nuevo') return 'Nuevo';
-  if (value === 'like new' || value === 'como nuevo') return 'Como nuevo';
+  if (value === 'like-new' || value === 'like new') return 'Como nuevo';
+  if (value === 'como nuevo') return 'Como nuevo';
+  if (value === 'excellent' || value === 'excelente') return 'Excelente';
   if (value === 'good' || value === 'bueno') return 'Bueno';
   if (value === 'fair' || value === 'regular') return 'Regular';
 
   return condition;
 }
 
-function onlyNumbers(value: string) {
-  return value.replace(/\D/g, '');
+function getSellerId(product: ProductDetail) {
+  return product.sellerId || product.userId || product.ownerId || '';
+}
+
+function saveContactRequest(request: ContactRequest) {
+  if (typeof window === 'undefined') return;
+
+  try {
+    const rawRequests = localStorage.getItem(CONTACT_REQUESTS_KEY);
+    const currentRequests = rawRequests ? JSON.parse(rawRequests) : [];
+
+    const requests = Array.isArray(currentRequests) ? currentRequests : [];
+
+    localStorage.setItem(
+      CONTACT_REQUESTS_KEY,
+      JSON.stringify([request, ...requests])
+    );
+  } catch {
+    localStorage.setItem(CONTACT_REQUESTS_KEY, JSON.stringify([request]));
+  }
 }
 
 export default function ProductDetailPage() {
@@ -257,83 +112,83 @@ export default function ProductDetailPage() {
 
   const productId = String(params?.id || '');
 
-  const [clientProducts, setClientProducts] = useState<ProductItem[]>([]);
+  const [product, setProduct] = useState<ProductDetail | null>(null);
   const [selectedImage, setSelectedImage] = useState('');
+  const [isLoading, setIsLoading] = useState(true);
+  const [errorMessage, setErrorMessage] = useState('');
+  const [successMessage, setSuccessMessage] = useState('');
   const [viewCount, setViewCount] = useState(0);
 
-  const [showPaymentModal, setShowPaymentModal] = useState(false);
-  const [paymentSuccess, setPaymentSuccess] = useState(false);
-  const [paymentError, setPaymentError] = useState('');
+  const loadProduct = async () => {
+    setIsLoading(true);
+    setErrorMessage('');
 
-  const [cardName, setCardName] = useState('');
-  const [cardNumber, setCardNumber] = useState('');
-  const [cardExpiry, setCardExpiry] = useState('');
-  const [cardCvv, setCardCvv] = useState('');
+    try {
+      const supabaseProduct = await getProductById(productId);
+
+      if (!supabaseProduct) {
+        setProduct(null);
+        setErrorMessage('Producto no encontrado.');
+        return;
+      }
+
+      setProduct(supabaseProduct as ProductDetail);
+      setViewCount(Number(supabaseProduct.views || 0));
+
+      const images =
+        supabaseProduct.images && supabaseProduct.images.length > 0
+          ? supabaseProduct.images
+          : supabaseProduct.image
+            ? [supabaseProduct.image]
+            : [];
+
+      setSelectedImage(images[0] || '');
+
+      const viewSessionKey = `la-segunda-viewed-${productId}`;
+
+      if (!sessionStorage.getItem(viewSessionKey)) {
+        sessionStorage.setItem(viewSessionKey, 'true');
+
+        await incrementProductViews(productId);
+
+        setViewCount(Number(supabaseProduct.views || 0) + 1);
+      }
+    } catch (error: any) {
+      setErrorMessage(
+        error?.message || 'No se pudo cargar el producto desde Supabase.'
+      );
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   useEffect(() => {
-    setClientProducts(getStoredProducts());
-  }, []);
-
-  const product = useMemo(() => {
-    const normalizedMockProducts = mockProducts.map(normalizeProduct);
-    const allProducts = [...clientProducts, ...normalizedMockProducts];
-
-    const uniqueProducts = new Map<string, ProductItem>();
-
-    allProducts.forEach((item) => {
-      uniqueProducts.set(String(item.id), item);
-    });
-
-    const foundProduct = uniqueProducts.get(productId) || null;
-
-    if (!foundProduct) return null;
-
-    const viewsMap = getProductViewsMap();
-    const storedViewCount = Number(viewsMap[productId] || foundProduct.views || 0);
-
-    return {
-      ...foundProduct,
-      views: storedViewCount,
-    };
-  }, [clientProducts, productId]);
+    if (productId) {
+      loadProduct();
+    }
+  }, [productId]);
 
   const productImages = useMemo(() => {
-    if (!product) return [DEFAULT_PRODUCT_IMAGE];
+    if (!product) return [];
 
-    const images =
-      product.images && product.images.length > 0
-        ? product.images
-        : product.image
-          ? [product.image]
-          : [DEFAULT_PRODUCT_IMAGE];
+    if (product.images && product.images.length > 0) {
+      return product.images.slice(0, 2);
+    }
 
-    return images.slice(0, 2);
+    if (product.image) {
+      return [product.image];
+    }
+
+    return [];
   }, [product]);
 
-  useEffect(() => {
-    if (productImages.length > 0) {
-      setSelectedImage(productImages[0]);
-    }
-  }, [productImages]);
-
-  useEffect(() => {
-    if (!product?.id) return;
-
-    const updatedViews = incrementProductView(product.id, product);
-
-    setViewCount(updatedViews);
-
-    const updatedProducts = getStoredProducts();
-    setClientProducts(updatedProducts);
-  }, [product?.id]);
-
-  const commissionRate = 8;
   const productPrice = Number(product?.price || 0);
-  const commissionAmount = (productPrice * commissionRate) / 100;
-  const sellerAmount = productPrice - commissionAmount;
+  const sellerId = product ? getSellerId(product) : '';
+  const isOwnProduct = Boolean(user?.id && sellerId && user.id === sellerId);
 
-  const handleOpenPaymentModal = () => {
-    setPaymentError('');
+  const handleContactSeller = () => {
+    setErrorMessage('');
+    setSuccessMessage('');
 
     if (!isAuthenticated || !user?.id) {
       router.push('/auth/login');
@@ -342,71 +197,50 @@ export default function ProductDetailPage() {
 
     if (!product) return;
 
-    if (getSellerId(product) === user.id) {
-      setPaymentError('No puedes comprar o contactar por tu propio producto.');
+    if (isOwnProduct) {
+      setErrorMessage('No puedes contactar por tu propio producto.');
       return;
     }
 
-    setShowPaymentModal(true);
-  };
-
-  const handleCardPayment = (event: React.FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    setPaymentError('');
-
-    if (!product || !user?.id) {
-      setPaymentError('Debes iniciar sesión para continuar.');
-      return;
-    }
-
-    const cleanCardNumber = onlyNumbers(cardNumber);
-    const cleanCvv = onlyNumbers(cardCvv);
-    const cleanExpiry = cardExpiry.trim();
-
-    if (!cardName.trim()) {
-      setPaymentError('Ingresa el nombre del titular de la tarjeta.');
-      return;
-    }
-
-    if (cleanCardNumber.length < 13 || cleanCardNumber.length > 19) {
-      setPaymentError('Ingresa un número de tarjeta válido.');
-      return;
-    }
-
-    if (!/^\d{2}\/\d{2}$/.test(cleanExpiry)) {
-      setPaymentError('Ingresa la fecha en formato MM/AA.');
-      return;
-    }
-
-    if (cleanCvv.length < 3 || cleanCvv.length > 4) {
-      setPaymentError('Ingresa un CVV válido.');
-      return;
-    }
-
-    const newPurchaseIntent: PurchaseIntent = {
-      id: `intent-${Date.now()}`,
+    const request: ContactRequest = {
+      id: `contact-${Date.now()}`,
       productId: product.id,
       productTitle: product.title || product.name || 'Producto',
-      sellerId: getSellerId(product),
+      sellerId,
       buyerId: user.id,
       amount: productPrice,
-      commissionRate,
-      commissionAmount,
-      sellerAmount,
-      status: 'pre_authorized',
-      cardLast4: cleanCardNumber.slice(-4),
+      status: 'pending_contact',
       createdAt: new Date().toISOString(),
     };
 
-    savePurchaseIntent(newPurchaseIntent);
+    saveContactRequest(request);
 
-    setPaymentSuccess(true);
-    setShowPaymentModal(false);
+    setSuccessMessage(
+      'Solicitud registrada. Se habilitará el contacto protegido desde mensajes.'
+    );
 
     window.setTimeout(() => {
       router.push('/messages');
-    }, 1200);
+    }, 1000);
   };
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-slate-50">
+        <Header />
+
+        <main className="mx-auto flex max-w-6xl items-center justify-center px-4 py-20">
+          <div className="rounded-2xl border bg-white p-8 text-center shadow-sm">
+            <Loader2 className="mx-auto mb-4 h-10 w-10 animate-spin text-primary" />
+            <h1 className="text-xl font-bold">Cargando producto...</h1>
+            <p className="mt-2 text-sm text-muted-foreground">
+              Obteniendo información desde Supabase.
+            </p>
+          </div>
+        </main>
+      </div>
+    );
+  }
 
   if (!product) {
     return (
@@ -429,7 +263,7 @@ export default function ProductDetailPage() {
             </h1>
 
             <p className="mb-6 text-muted-foreground">
-              El producto no existe o fue eliminado por el vendedor.
+              El producto no existe, fue eliminado o ya no está activo.
             </p>
 
             <Link href="/products">
@@ -455,23 +289,18 @@ export default function ProductDetailPage() {
           </Link>
         </div>
 
-        {paymentSuccess && (
+        {successMessage && (
           <div className="mb-6 rounded-xl border border-green-200 bg-green-50 p-4 text-green-700">
             <div className="flex items-center gap-2 font-semibold">
               <CheckCircle className="h-5 w-5" />
-              Pago de reserva registrado correctamente.
+              {successMessage}
             </div>
-
-            <p className="mt-1 text-sm">
-              El chat protegido será habilitado para coordinar la compra sin compartir
-              datos personales.
-            </p>
           </div>
         )}
 
-        {paymentError && (
+        {errorMessage && (
           <div className="mb-6 rounded-xl border border-red-200 bg-red-50 p-4 text-red-700">
-            {paymentError}
+            {errorMessage}
           </div>
         )}
 
@@ -576,58 +405,40 @@ export default function ProductDetailPage() {
             <div className="rounded-2xl border bg-white p-6 shadow-sm">
               <h2 className="mb-4 flex items-center gap-2 text-lg font-bold">
                 <ShieldCheck className="h-5 w-5 text-primary" />
-                Compra protegida
+                Contacto protegido
               </h2>
 
               <div className="space-y-3 text-sm text-slate-600">
                 <p className="flex gap-2">
                   <Lock className="mt-0.5 h-4 w-4 flex-shrink-0 text-primary" />
-                  Para contactar al vendedor, primero se registra una reserva de compra.
-                </p>
-
-                <p className="flex gap-2">
-                  <CreditCard className="mt-0.5 h-4 w-4 flex-shrink-0 text-primary" />
-                  El comprador ingresa su tarjeta mediante un flujo protegido.
+                  Para contactar al vendedor, primero debes iniciar sesión.
                 </p>
 
                 <p className="flex gap-2">
                   <MessageCircle className="mt-0.5 h-4 w-4 flex-shrink-0 text-primary" />
-                  Luego se habilita el chat interno sin exponer teléfono ni correo.
+                  La conversación se realiza dentro de La Segunda para proteger a comprador y vendedor.
                 </p>
-              </div>
 
-              <div className="mt-5 rounded-xl bg-slate-50 p-4 text-sm">
-                <div className="mb-2 flex justify-between">
-                  <span>Precio del producto</span>
-                  <span className="font-semibold">S/ {formatPrice(productPrice)}</span>
-                </div>
-
-                <div className="mb-2 flex justify-between">
-                  <span>Comisión La Segunda ({commissionRate}%)</span>
-                  <span className="font-semibold">
-                    S/ {formatPrice(commissionAmount)}
-                  </span>
-                </div>
-
-                <div className="flex justify-between border-t pt-2">
-                  <span>Pago al vendedor</span>
-                  <span className="font-semibold">
-                    S/ {formatPrice(sellerAmount)}
-                  </span>
-                </div>
+                <p className="flex gap-2">
+                  <ShieldCheck className="mt-0.5 h-4 w-4 flex-shrink-0 text-primary" />
+                  No compartas WhatsApp, correo ni datos personales fuera de la plataforma.
+                </p>
               </div>
 
               <Button
                 className="mt-5 w-full"
                 size="lg"
-                onClick={handleOpenPaymentModal}
+                onClick={handleContactSeller}
+                disabled={isOwnProduct}
               >
-                <CreditCard className="mr-2 h-5 w-5" />
-                Contactar vendedor con compra protegida
+                <MessageCircle className="mr-2 h-5 w-5" />
+                {isOwnProduct
+                  ? 'Este producto es tuyo'
+                  : 'Contactar vendedor'}
               </Button>
 
               <p className="mt-3 text-center text-xs text-muted-foreground">
-                No compartas WhatsApp, correo ni datos personales fuera de La Segunda.
+                Más adelante podrás integrar Mercado Pago, Culqi, Izipay o Stripe.
               </p>
             </div>
 
@@ -640,123 +451,13 @@ export default function ProductDetailPage() {
               <div className="rounded-xl bg-slate-50 p-4">
                 <p className="font-semibold">Vendedor de La Segunda</p>
                 <p className="text-sm text-muted-foreground">
-                  Identidad protegida hasta iniciar compra segura.
+                  Identidad protegida hasta iniciar contacto seguro.
                 </p>
               </div>
             </div>
           </div>
         </section>
       </main>
-
-      {showPaymentModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
-          <div className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-xl">
-            <div className="mb-5 flex items-start justify-between gap-4">
-              <div>
-                <h2 className="text-xl font-bold">
-                  Compra protegida
-                </h2>
-
-                <p className="text-sm text-muted-foreground">
-                  Ingresa los datos de tarjeta para registrar la reserva y habilitar
-                  el contacto con el vendedor.
-                </p>
-              </div>
-
-              <button
-                type="button"
-                onClick={() => setShowPaymentModal(false)}
-                className="rounded-full p-2 hover:bg-slate-100"
-              >
-                <X className="h-5 w-5" />
-              </button>
-            </div>
-
-            <div className="mb-5 rounded-xl border bg-slate-50 p-4">
-              <p className="font-semibold">{product.title || product.name}</p>
-              <p className="text-sm text-muted-foreground">
-                Monto: S/ {formatPrice(productPrice)}
-              </p>
-            </div>
-
-            {paymentError && (
-              <div className="mb-4 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">
-                {paymentError}
-              </div>
-            )}
-
-            <form onSubmit={handleCardPayment} className="space-y-4">
-              <div className="space-y-2">
-                <label className="text-sm font-medium">
-                  Titular de la tarjeta
-                </label>
-
-                <input
-                  value={cardName}
-                  onChange={(event) => setCardName(event.target.value)}
-                  placeholder="Nombre como aparece en la tarjeta"
-                  className="w-full rounded-md border bg-background px-3 py-2 text-sm"
-                />
-              </div>
-
-              <div className="space-y-2">
-                <label className="text-sm font-medium">
-                  Número de tarjeta
-                </label>
-
-                <input
-                  value={cardNumber}
-                  onChange={(event) => setCardNumber(event.target.value)}
-                  placeholder="0000 0000 0000 0000"
-                  maxLength={23}
-                  className="w-full rounded-md border bg-background px-3 py-2 text-sm"
-                />
-              </div>
-
-              <div className="grid gap-4 sm:grid-cols-2">
-                <div className="space-y-2">
-                  <label className="text-sm font-medium">
-                    Vencimiento
-                  </label>
-
-                  <input
-                    value={cardExpiry}
-                    onChange={(event) => setCardExpiry(event.target.value)}
-                    placeholder="MM/AA"
-                    maxLength={5}
-                    className="w-full rounded-md border bg-background px-3 py-2 text-sm"
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <label className="text-sm font-medium">
-                    CVV
-                  </label>
-
-                  <input
-                    value={cardCvv}
-                    onChange={(event) => setCardCvv(event.target.value)}
-                    placeholder="123"
-                    maxLength={4}
-                    className="w-full rounded-md border bg-background px-3 py-2 text-sm"
-                  />
-                </div>
-              </div>
-
-              <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
-                Para producción real no guardes datos de tarjeta en tu web.
-                Debes usar una pasarela de pago como Culqi, Mercado Pago, Izipay
-                o Stripe con tokenización segura.
-              </div>
-
-              <Button type="submit" className="w-full">
-                <Lock className="mr-2 h-4 w-4" />
-                Registrar compra protegida y habilitar chat
-              </Button>
-            </form>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
