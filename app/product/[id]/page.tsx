@@ -60,6 +60,7 @@ type PurchaseIntent = {
 };
 
 const PRODUCTS_KEY = 'la-segunda-products';
+const PRODUCT_VIEWS_KEY = 'la-segunda-product-views';
 const PURCHASE_INTENTS_KEY = 'la-segunda-purchase-intents';
 
 const DEFAULT_PRODUCT_IMAGE = 'https://placehold.co/800x600?text=La+Segunda';
@@ -109,6 +110,36 @@ function getStoredProducts(): ProductItem[] {
   }
 }
 
+function saveStoredProducts(products: ProductItem[]) {
+  if (typeof window === 'undefined') return;
+
+  localStorage.setItem(PRODUCTS_KEY, JSON.stringify(products));
+}
+
+function getProductViewsMap(): Record<string, number> {
+  if (typeof window === 'undefined') return {};
+
+  try {
+    const rawViews = localStorage.getItem(PRODUCT_VIEWS_KEY);
+
+    if (!rawViews) return {};
+
+    const parsedViews = JSON.parse(rawViews);
+
+    if (!parsedViews || typeof parsedViews !== 'object') return {};
+
+    return parsedViews;
+  } catch {
+    return {};
+  }
+}
+
+function saveProductViewsMap(viewsMap: Record<string, number>) {
+  if (typeof window === 'undefined') return;
+
+  localStorage.setItem(PRODUCT_VIEWS_KEY, JSON.stringify(viewsMap));
+}
+
 function getStoredPurchaseIntents(): PurchaseIntent[] {
   if (typeof window === 'undefined') return [];
 
@@ -136,6 +167,59 @@ function savePurchaseIntent(intent: PurchaseIntent) {
     PURCHASE_INTENTS_KEY,
     JSON.stringify([intent, ...currentIntents])
   );
+}
+
+function incrementProductView(productId: string, currentProduct?: ProductItem | null) {
+  if (typeof window === 'undefined') return Number(currentProduct?.views || 0);
+
+  const sessionKey = `la-segunda-viewed-${productId}`;
+
+  if (sessionStorage.getItem(sessionKey)) {
+    const viewsMap = getProductViewsMap();
+    return Number(viewsMap[productId] || currentProduct?.views || 0);
+  }
+
+  sessionStorage.setItem(sessionKey, 'true');
+
+  let newViewCount = Number(currentProduct?.views || 0) + 1;
+
+  try {
+    const storedProducts = getStoredProducts();
+
+    const productExistsInStorage = storedProducts.some((product) => {
+      return String(product.id) === String(productId);
+    });
+
+    if (productExistsInStorage) {
+      const updatedProducts = storedProducts.map((product) => {
+        if (String(product.id) !== String(productId)) return product;
+
+        const currentViews = Number(product.views || 0);
+        newViewCount = currentViews + 1;
+
+        return {
+          ...product,
+          views: newViewCount,
+        };
+      });
+
+      saveStoredProducts(updatedProducts);
+    }
+
+    const viewsMap = getProductViewsMap();
+    const currentViewsFromMap = Number(
+      viewsMap[productId] || currentProduct?.views || 0
+    );
+
+    const finalViews = Math.max(newViewCount, currentViewsFromMap + 1);
+
+    viewsMap[productId] = finalViews;
+    saveProductViewsMap(viewsMap);
+
+    return finalViews;
+  } catch {
+    return newViewCount;
+  }
 }
 
 function getSellerId(product: ProductItem) {
@@ -175,6 +259,8 @@ export default function ProductDetailPage() {
 
   const [clientProducts, setClientProducts] = useState<ProductItem[]>([]);
   const [selectedImage, setSelectedImage] = useState('');
+  const [viewCount, setViewCount] = useState(0);
+
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [paymentSuccess, setPaymentSuccess] = useState(false);
   const [paymentError, setPaymentError] = useState('');
@@ -198,7 +284,17 @@ export default function ProductDetailPage() {
       uniqueProducts.set(String(item.id), item);
     });
 
-    return uniqueProducts.get(productId) || null;
+    const foundProduct = uniqueProducts.get(productId) || null;
+
+    if (!foundProduct) return null;
+
+    const viewsMap = getProductViewsMap();
+    const storedViewCount = Number(viewsMap[productId] || foundProduct.views || 0);
+
+    return {
+      ...foundProduct,
+      views: storedViewCount,
+    };
   }, [clientProducts, productId]);
 
   const productImages = useMemo(() => {
@@ -219,6 +315,17 @@ export default function ProductDetailPage() {
       setSelectedImage(productImages[0]);
     }
   }, [productImages]);
+
+  useEffect(() => {
+    if (!product?.id) return;
+
+    const updatedViews = incrementProductView(product.id, product);
+
+    setViewCount(updatedViews);
+
+    const updatedProducts = getStoredProducts();
+    setClientProducts(updatedProducts);
+  }, [product?.id]);
 
   const commissionRate = 8;
   const productPrice = Number(product?.price || 0);
@@ -443,7 +550,7 @@ export default function ProductDetailPage() {
 
                 <span className="flex items-center gap-1">
                   <Eye className="h-4 w-4" />
-                  {product.views || 0} vistas
+                  {viewCount} vistas
                 </span>
 
                 <span className="flex items-center gap-1">
