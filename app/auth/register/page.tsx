@@ -3,23 +3,18 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { supabase } from '@/lib/supabase/client';
+import { useAuth } from '@/lib/auth-context';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card';
-import {
   AlertCircle,
+  ArrowLeft,
   CheckCircle,
-  User,
-  Mail,
+  Loader2,
   Lock,
+  Mail,
   MapPin,
+  User,
   Venus,
   Mars,
   CircleUserRound,
@@ -27,8 +22,11 @@ import {
 
 type Gender = 'male' | 'female' | 'neutral';
 
+const LOGO_SRC = '/lasegunda.png';
+
 export default function RegisterPage() {
   const router = useRouter();
+  const { register } = useAuth();
 
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
@@ -36,44 +34,16 @@ export default function RegisterPage() {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [gender, setGender] = useState<Gender>('neutral');
   const [city, setCity] = useState('');
+
   const [error, setError] = useState('');
-  const [success, setSuccess] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
+  const [success, setSuccess] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [logoError, setLogoError] = useState(false);
 
-  const genderOptions: {
-    value: Gender;
-    label: string;
-    description: string;
-    icon: React.ReactNode;
-    emoji: string;
-  }[] = [
-    {
-      value: 'male',
-      label: 'Hombre',
-      description: 'Avatar masculino',
-      icon: <Mars className="h-4 w-4" />,
-      emoji: '👨‍💼',
-    },
-    {
-      value: 'female',
-      label: 'Mujer',
-      description: 'Avatar femenino',
-      icon: <Venus className="h-4 w-4" />,
-      emoji: '👩‍💼',
-    },
-    {
-      value: 'neutral',
-      label: 'Prefiero no decirlo',
-      description: 'Avatar neutral',
-      icon: <CircleUserRound className="h-4 w-4" />,
-      emoji: '🙂',
-    },
-  ];
-
-  const selectedGender = genderOptions.find((item) => item.value === gender);
-
-  const getUsernameFromEmail = (emailValue: string) => {
-    return emailValue.split('@')[0]?.toLowerCase().replace(/[^a-z0-9._-]/g, '') || '';
+  const avatarPreview = {
+    male: '👨',
+    female: '👩',
+    neutral: '🙂',
   };
 
   const validateForm = () => {
@@ -104,11 +74,13 @@ export default function RegisterPage() {
     return '';
   };
 
-  const handleSubmit = async (event: React.FormEvent) => {
+  const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
 
+    if (isSubmitting) return;
+
     setError('');
-    setSuccess(false);
+    setSuccess('');
 
     const validationError = validateForm();
 
@@ -117,261 +89,271 @@ export default function RegisterPage() {
       return;
     }
 
-    setIsLoading(true);
+    setIsSubmitting(true);
 
     try {
-      const cleanName = name.trim();
-      const cleanEmail = email.trim().toLowerCase();
-      const cleanCity = city.trim();
-      const username = getUsernameFromEmail(cleanEmail);
-
-      const { data, error: signUpError } = await supabase.auth.signUp({
-        email: cleanEmail,
+      await register(
+        name.trim(),
+        email.trim().toLowerCase(),
         password,
-        options: {
-          data: {
-            full_name: cleanName,
-            name: cleanName,
-            username,
-            gender,
-            city: cleanCity,
-            account_type: 'buyer',
-          },
-        },
-      });
-
-      if (signUpError) {
-        throw signUpError;
-      }
-
-      /*
-        La tabla profiles se crea automáticamente por el trigger:
-        public.handle_new_user()
-
-        Si Supabase crea sesión inmediata, reforzamos la actualización del perfil.
-        Si Supabase requiere confirmación por correo, el perfil igual se creará con metadata.
-      */
-      if (data.user && data.session) {
-        await supabase
-          .from('profiles')
-          .update({
-            full_name: cleanName,
-            username,
-            email: cleanEmail,
-            gender,
-            city: cleanCity,
-            account_type: 'buyer',
-            is_seller: false,
-            membership_type: 'free',
-            seller_badge: 'standard',
-            subscription_status: 'free',
-            commission_rate: 8,
-            monthly_listing_limit: 3,
-          })
-          .eq('user_id', data.user.id);
-      }
-
-      setSuccess(true);
-
-      setTimeout(() => {
-        if (data.session) {
-          router.push('/profile');
-        } else {
-          router.push('/auth/login');
-        }
-      }, 1500);
-    } catch (err: any) {
-      setError(
-        err?.message ||
-          'No se pudo crear la cuenta. Verifica tus datos e intenta nuevamente.'
+        gender,
+        city.trim()
       );
-    } finally {
-      setIsLoading(false);
+
+      setSuccess(
+        'Cuenta creada correctamente. Revisa tu correo para confirmar tu cuenta.'
+      );
+
+      window.setTimeout(() => {
+        router.push('/auth/login');
+      }, 1600);
+    } catch (err: any) {
+      setError(err?.message || 'No se pudo crear la cuenta. Intenta nuevamente.');
+      setIsSubmitting(false);
     }
   };
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-slate-50 to-slate-100 p-4">
-      <Card className="w-full max-w-xl shadow-lg">
-        <CardHeader className="space-y-3 text-center">
-          <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-primary text-xl font-bold text-primary-foreground">
-            S
-          </div>
+    <div className="min-h-screen bg-slate-50 px-4 py-8">
+      <div className="mx-auto w-full max-w-2xl rounded-2xl border bg-white p-6 shadow-sm md:p-8">
+        <div className="mb-8 text-center">
+          <Link href="/" className="mx-auto mb-5 flex justify-center">
+            {!logoError ? (
+              <div className="flex h-20 w-[260px] items-center justify-center overflow-hidden rounded-xl bg-white">
+                <img
+                  src={LOGO_SRC}
+                  alt="La Segunda"
+                  onError={() => setLogoError(true)}
+                  className="h-full w-full object-cover object-center"
+                />
+              </div>
+            ) : (
+              <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-primary text-xl font-bold text-primary-foreground">
+                S
+              </div>
+            )}
+          </Link>
 
-          <CardTitle className="text-3xl">Crear cuenta</CardTitle>
+          <h1 className="text-3xl font-bold text-slate-950">
+            Crear cuenta
+          </h1>
 
-          <CardDescription>
+          <p className="mt-3 text-muted-foreground">
             Regístrate en La Segunda para comprar, vender y publicar productos.
-          </CardDescription>
-        </CardHeader>
+          </p>
+        </div>
 
-        <CardContent>
-          <div className="mb-6 rounded-2xl border bg-white p-5 text-center">
-            <p className="mb-3 text-sm font-medium">Avatar inicial</p>
+        <div className="mb-6 rounded-2xl border bg-white p-5 text-center">
+          <h2 className="mb-4 font-semibold">Avatar inicial</h2>
 
-            <div className="mx-auto mb-3 flex h-20 w-20 items-center justify-center rounded-full border-4 border-primary/10 bg-slate-100">
-              <span className="text-4xl">{selectedGender?.emoji}</span>
-            </div>
-
-            <p className="text-sm text-muted-foreground">
-              Tu avatar se asignará según la opción seleccionada.
-            </p>
+          <div className="mx-auto mb-4 flex h-20 w-20 items-center justify-center rounded-full border-4 border-slate-200 bg-slate-100 text-4xl">
+            {avatarPreview[gender]}
           </div>
 
-          <form onSubmit={handleSubmit} className="space-y-4">
-            {error && (
-              <div className="flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 p-3 text-red-700">
-                <AlertCircle className="mt-0.5 h-4 w-4 flex-shrink-0" />
-                <span className="text-sm">{error}</span>
-              </div>
-            )}
+          <p className="text-sm text-muted-foreground">
+            Tu avatar se asignará según la opción seleccionada.
+          </p>
+        </div>
 
-            {success && (
-              <div className="flex items-start gap-2 rounded-lg border border-green-200 bg-green-50 p-3 text-green-700">
-                <CheckCircle className="mt-0.5 h-4 w-4 flex-shrink-0" />
-                <span className="text-sm">
-                  Cuenta creada correctamente. Redirigiendo...
-                </span>
-              </div>
-            )}
+        {error && (
+          <div className="mb-5 flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 p-4 text-red-700">
+            <AlertCircle className="mt-0.5 h-4 w-4 flex-shrink-0" />
+            <p className="text-sm">{error}</p>
+          </div>
+        )}
 
+        {success && (
+          <div className="mb-5 flex items-start gap-2 rounded-xl border border-green-200 bg-green-50 p-4 text-green-700">
+            <CheckCircle className="mt-0.5 h-4 w-4 flex-shrink-0" />
+            <p className="text-sm">{success}</p>
+          </div>
+        )}
+
+        <form onSubmit={handleSubmit} className="space-y-5">
+          <div className="space-y-2">
+            <label className="text-sm font-medium">Nombre completo</label>
+
+            <div className="relative">
+              <User className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+
+              <Input
+                value={name}
+                onChange={(event) => setName(event.target.value)}
+                placeholder="Ejemplo: Julio Diaz"
+                className="pl-9"
+                disabled={isSubmitting}
+              />
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <label className="text-sm font-medium">Correo electrónico</label>
+
+            <div className="relative">
+              <Mail className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+
+              <Input
+                type="email"
+                value={email}
+                onChange={(event) => setEmail(event.target.value)}
+                placeholder="correo@ejemplo.com"
+                className="pl-9"
+                disabled={isSubmitting}
+              />
+            </div>
+          </div>
+
+          <div className="grid gap-4 md:grid-cols-2">
             <div className="space-y-2">
-              <label className="text-sm font-medium">Nombre completo</label>
+              <label className="text-sm font-medium">Contraseña</label>
+
               <div className="relative">
-                <User className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+                <Lock className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+
                 <Input
-                  type="text"
-                  placeholder="Ejemplo: Diego Palomino"
-                  value={name}
-                  onChange={(event) => setName(event.target.value)}
+                  type="password"
+                  value={password}
+                  onChange={(event) => setPassword(event.target.value)}
+                  placeholder="••••••••"
                   className="pl-9"
-                  required
+                  disabled={isSubmitting}
                 />
               </div>
             </div>
 
             <div className="space-y-2">
-              <label className="text-sm font-medium">Correo electrónico</label>
+              <label className="text-sm font-medium">Confirmar contraseña</label>
+
               <div className="relative">
-                <Mail className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+                <Lock className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+
                 <Input
-                  type="email"
-                  placeholder="correo@ejemplo.com"
-                  value={email}
-                  onChange={(event) => setEmail(event.target.value)}
+                  type="password"
+                  value={confirmPassword}
+                  onChange={(event) => setConfirmPassword(event.target.value)}
+                  placeholder="••••••••"
                   className="pl-9"
-                  required
+                  disabled={isSubmitting}
                 />
               </div>
             </div>
+          </div>
 
-            <div className="grid gap-4 md:grid-cols-2">
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Contraseña</label>
-                <div className="relative">
-                  <Lock className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-                  <Input
-                    type="password"
-                    placeholder="••••••••"
-                    value={password}
-                    onChange={(event) => setPassword(event.target.value)}
-                    className="pl-9"
-                    required
-                  />
+          <div className="space-y-3">
+            <label className="text-sm font-medium">Género</label>
+
+            <div className="grid gap-3 md:grid-cols-3">
+              <button
+                type="button"
+                onClick={() => setGender('male')}
+                disabled={isSubmitting}
+                className={`rounded-xl border p-4 text-left transition ${
+                  gender === 'male'
+                    ? 'border-primary bg-primary/5 ring-2 ring-primary/20'
+                    : 'hover:bg-slate-50'
+                }`}
+              >
+                <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-full bg-slate-100 text-primary">
+                  <Mars className="h-5 w-5" />
                 </div>
-              </div>
 
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Confirmar contraseña</label>
-                <div className="relative">
-                  <Lock className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-                  <Input
-                    type="password"
-                    placeholder="••••••••"
-                    value={confirmPassword}
-                    onChange={(event) => setConfirmPassword(event.target.value)}
-                    className="pl-9"
-                    required
-                  />
+                <p className="font-semibold">Hombre</p>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Avatar masculino
+                </p>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setGender('female')}
+                disabled={isSubmitting}
+                className={`rounded-xl border p-4 text-left transition ${
+                  gender === 'female'
+                    ? 'border-primary bg-primary/5 ring-2 ring-primary/20'
+                    : 'hover:bg-slate-50'
+                }`}
+              >
+                <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-full bg-slate-100 text-primary">
+                  <Venus className="h-5 w-5" />
                 </div>
-              </div>
+
+                <p className="font-semibold">Mujer</p>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Avatar femenino
+                </p>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setGender('neutral')}
+                disabled={isSubmitting}
+                className={`rounded-xl border p-4 text-left transition ${
+                  gender === 'neutral'
+                    ? 'border-primary bg-primary/5 ring-2 ring-primary/20'
+                    : 'hover:bg-slate-50'
+                }`}
+              >
+                <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-full bg-primary text-primary-foreground">
+                  <CircleUserRound className="h-5 w-5" />
+                </div>
+
+                <p className="font-semibold">Prefiero no decirlo</p>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Avatar neutral
+                </p>
+              </button>
             </div>
+          </div>
 
-            <div className="space-y-3">
-              <label className="text-sm font-medium">Género</label>
+          <div className="space-y-2">
+            <label className="text-sm font-medium">Ciudad opcional</label>
 
-              <div className="grid gap-3 md:grid-cols-3">
-                {genderOptions.map((option) => {
-                  const isSelected = gender === option.value;
+            <div className="relative">
+              <MapPin className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
 
-                  return (
-                    <button
-                      key={option.value}
-                      type="button"
-                      onClick={() => setGender(option.value)}
-                      className={`rounded-xl border p-4 text-left transition hover:bg-muted ${
-                        isSelected
-                          ? 'border-primary bg-primary/5 ring-2 ring-primary/20'
-                          : 'border-border bg-white'
-                      }`}
-                    >
-                      <div className="mb-2 flex items-center gap-2">
-                        <div
-                          className={`flex h-9 w-9 items-center justify-center rounded-full ${
-                            isSelected
-                              ? 'bg-primary text-primary-foreground'
-                              : 'bg-slate-100 text-slate-600'
-                          }`}
-                        >
-                          {option.icon}
-                        </div>
-
-                        <span className="text-sm font-semibold">
-                          {option.label}
-                        </span>
-                      </div>
-
-                      <p className="text-xs text-muted-foreground">
-                        {option.description}
-                      </p>
-                    </button>
-                  );
-                })}
-              </div>
+              <Input
+                value={city}
+                onChange={(event) => setCity(event.target.value)}
+                placeholder="Ejemplo: Lima"
+                className="pl-9"
+                disabled={isSubmitting}
+              />
             </div>
+          </div>
 
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Ciudad opcional</label>
-              <div className="relative">
-                <MapPin className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-                <Input
-                  type="text"
-                  placeholder="Ejemplo: Lima"
-                  value={city}
-                  onChange={(event) => setCity(event.target.value)}
-                  className="pl-9"
-                />
-              </div>
-            </div>
+          <Button type="submit" className="w-full" disabled={isSubmitting}>
+            {isSubmitting ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Creando cuenta...
+              </>
+            ) : (
+              'Crear cuenta'
+            )}
+          </Button>
+        </form>
 
-            <Button type="submit" className="w-full" disabled={isLoading || success}>
-              {isLoading ? 'Creando cuenta...' : 'Crear cuenta'}
+        <div className="mt-6 border-t pt-6">
+          <p className="mb-4 text-center text-sm text-muted-foreground">
+            ¿Ya tienes cuenta?
+          </p>
+
+          <Link href="/auth/login">
+            <Button variant="outline" className="w-full">
+              Iniciar sesión
             </Button>
-          </form>
+          </Link>
+        </div>
 
-          <div className="mt-6 border-t pt-6">
-            <p className="mb-4 text-center text-sm text-muted-foreground">
-              ¿Ya tienes cuenta?
-            </p>
-
-            <Link href="/auth/login">
-              <Button variant="outline" className="w-full">
-                Inicia sesión
-              </Button>
-            </Link>
-          </div>
-        </CardContent>
-      </Card>
+        <div className="mt-4">
+          <Link href="/">
+            <Button variant="ghost" className="w-full">
+              <ArrowLeft className="mr-2 h-4 w-4" />
+              Volver al inicio
+            </Button>
+          </Link>
+        </div>
+      </div>
     </div>
   );
 }
