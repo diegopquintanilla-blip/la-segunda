@@ -12,7 +12,15 @@ import {
 } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
-import { mockProducts, mockOrders } from '@/lib/mock-data';
+import { mockOrders } from '@/lib/mock-data';
+import {
+  createProduct,
+  deleteProduct as deleteSupabaseProduct,
+  listSellerProducts,
+  markProductAsSold,
+  updateProduct,
+  type ProductFormInput,
+} from '@/lib/supabase/products';
 import {
   BarChart,
   Bar,
@@ -41,6 +49,8 @@ import {
   X,
   Upload,
   ImageIcon,
+  Loader2,
+  RefreshCw,
 } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -54,6 +64,7 @@ type ProductItem = {
   userId?: string;
   ownerId?: string;
   title: string;
+  name?: string;
   description?: string;
   category?: string;
   condition?: string;
@@ -64,7 +75,9 @@ type ProductItem = {
   status?: string;
   views?: number;
   favoriteCount?: number;
+  isFeatured?: boolean;
   createdAt?: string;
+  updatedAt?: string;
 };
 
 type PlanConfig = {
@@ -99,32 +112,18 @@ const PLAN_CONFIG: Record<PlanType, PlanConfig> = {
   },
 };
 
-const DEFAULT_PRODUCT_IMAGE = 'https://placehold.co/600x600?text=La+Segunda';
-
-function readFileAsBase64(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-
-    reader.onload = () => {
-      resolve(reader.result as string);
-    };
-
-    reader.onerror = () => {
-      reject(new Error('No se pudo leer la imagen.'));
-    };
-
-    reader.readAsDataURL(file);
-  });
-}
-
 export default function SellerDashboardPage() {
   const { user, isAuthenticated } = useAuth();
   const router = useRouter();
 
-  const [localProducts, setLocalProducts] = useState<ProductItem[]>([]);
+  const [sellerProducts, setSellerProducts] = useState<ProductItem[]>([]);
+  const [isProductsLoading, setIsProductsLoading] = useState(true);
+  const [isSavingProduct, setIsSavingProduct] = useState(false);
+  const [pageError, setPageError] = useState('');
+  const [pageSuccess, setPageSuccess] = useState('');
+
   const [showForm, setShowForm] = useState(false);
   const [formError, setFormError] = useState('');
-  const [formSuccess, setFormSuccess] = useState('');
 
   const [openActionsId, setOpenActionsId] = useState<string | null>(null);
   const [editingProduct, setEditingProduct] = useState<ProductItem | null>(null);
@@ -137,7 +136,8 @@ export default function SellerDashboardPage() {
   const [productPrice, setProductPrice] = useState('');
   const [productCity, setProductCity] = useState('');
 
-  const [productImages, setProductImages] = useState<string[]>([]);
+  const [productImageFiles, setProductImageFiles] = useState<File[]>([]);
+  const [productImagePreviews, setProductImagePreviews] = useState<string[]>([]);
   const [productImageNames, setProductImageNames] = useState<string[]>([]);
 
   useEffect(() => {
@@ -146,23 +146,28 @@ export default function SellerDashboardPage() {
     }
   }, [isAuthenticated, router]);
 
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-
-    const rawProducts = localStorage.getItem('la-segunda-products');
-
-    if (!rawProducts) return;
+  const loadSellerProducts = async () => {
+    setIsProductsLoading(true);
+    setPageError('');
 
     try {
-      const parsedProducts = JSON.parse(rawProducts);
-
-      if (Array.isArray(parsedProducts)) {
-        setLocalProducts(parsedProducts);
-      }
-    } catch {
-      setLocalProducts([]);
+      const products = await listSellerProducts();
+      setSellerProducts(products as ProductItem[]);
+    } catch (error: any) {
+      setPageError(
+        error?.message || 'No se pudieron cargar tus productos desde Supabase.'
+      );
+      setSellerProducts([]);
+    } finally {
+      setIsProductsLoading(false);
     }
-  }, []);
+  };
+
+  useEffect(() => {
+    if (isAuthenticated && user) {
+      loadSellerProducts();
+    }
+  }, [isAuthenticated, user]);
 
   if (!isAuthenticated || !user) {
     return null;
@@ -193,29 +198,6 @@ export default function SellerDashboardPage() {
   const currentPlanType = getCurrentPlan();
   const currentPlan = PLAN_CONFIG[currentPlanType];
 
-  const allProducts = useMemo(() => {
-    const merged = [...mockProducts, ...localProducts];
-    const uniqueProducts = new Map<string, ProductItem>();
-
-    merged.forEach((product: any) => {
-      if (product?.id) {
-        uniqueProducts.set(product.id, product);
-      }
-    });
-
-    return Array.from(uniqueProducts.values());
-  }, [localProducts]);
-
-  const sellerProducts = allProducts.filter((product: any) => {
-    return (
-      product.sellerId === user.id ||
-      product.userId === user.id ||
-      product.ownerId === user.id
-    );
-  });
-
-  const sellerOrders = mockOrders.filter((order) => order.sellerId === user.id);
-
   const isVerified = user.verificationStatus === 'verified';
 
   const postingLimit = isVerified
@@ -235,6 +217,8 @@ export default function SellerDashboardPage() {
     ? 100
     : Math.min((publishedCount / postingLimit) * 100, 100);
 
+  const sellerOrders = mockOrders.filter((order) => order.sellerId === user.id);
+
   const totalRevenue = sellerOrders.reduce((sum, order) => sum + order.amount, 0);
 
   const totalSales = sellerOrders.filter(
@@ -242,34 +226,29 @@ export default function SellerDashboardPage() {
   ).length;
 
   const totalViews = sellerProducts.reduce(
-    (sum: number, product: any) => sum + (product.views || 0),
+    (sum: number, product: ProductItem) => sum + Number(product.views || 0),
     0
   );
 
   const totalFavorites = sellerProducts.reduce(
-    (sum: number, product: any) => sum + (product.favoriteCount || 0),
+    (sum: number, product: ProductItem) =>
+      sum + Number(product.favoriteCount || 0),
     0
   );
 
   const commissionEarnings = (totalRevenue * currentPlan.commissionRate) / 100;
   const netEarnings = totalRevenue - commissionEarnings;
 
-  const chartData = [
-    { month: 'Ene', sales: 0, revenue: 0 },
-    { month: 'Feb', sales: 0, revenue: 0 },
-    { month: 'Mar', sales: 0, revenue: 0 },
-    { month: 'Abr', sales: 0, revenue: 0 },
-    { month: 'May', sales: totalSales, revenue: totalRevenue },
-    { month: 'Jun', sales: 0, revenue: 0 },
-  ];
-
-  const saveProducts = (products: ProductItem[]) => {
-    setLocalProducts(products);
-
-    if (typeof window !== 'undefined') {
-      localStorage.setItem('la-segunda-products', JSON.stringify(products));
-    }
-  };
+  const chartData = useMemo(() => {
+    return [
+      { month: 'Ene', sales: 0, revenue: 0 },
+      { month: 'Feb', sales: 0, revenue: 0 },
+      { month: 'Mar', sales: 0, revenue: 0 },
+      { month: 'Abr', sales: 0, revenue: 0 },
+      { month: 'May', sales: totalSales, revenue: totalRevenue },
+      { month: 'Jun', sales: 0, revenue: 0 },
+    ];
+  }, [totalSales, totalRevenue]);
 
   const resetForm = () => {
     setProductTitle('');
@@ -278,9 +257,11 @@ export default function SellerDashboardPage() {
     setProductCondition('Bueno');
     setProductPrice('');
     setProductCity('');
-    setProductImages([]);
+    setProductImageFiles([]);
+    setProductImagePreviews([]);
     setProductImageNames([]);
     setEditingProduct(null);
+    setFormError('');
   };
 
   const scrollToPublishForm = () => {
@@ -298,8 +279,8 @@ export default function SellerDashboardPage() {
 
   const openPublishForm = () => {
     resetForm();
-    setFormError('');
-    setFormSuccess('');
+    setPageError('');
+    setPageSuccess('');
     setShowForm(true);
     scrollToPublishForm();
   };
@@ -313,22 +294,26 @@ export default function SellerDashboardPage() {
           : [];
 
     setEditingProduct(product);
-    setProductTitle(product.title || '');
+    setProductTitle(product.title || product.name || '');
     setProductDescription(product.description || '');
     setProductCategory(product.category || 'Electrónica');
     setProductCondition(product.condition || 'Bueno');
     setProductPrice(String(product.price || ''));
     setProductCity(product.city || '');
-    setProductImages(existingImages);
+    setProductImageFiles([]);
+    setProductImagePreviews(existingImages);
     setProductImageNames(
       existingImages.map((_, index) => `Imagen actual ${index + 1}`)
     );
+    setFormError('');
+    setPageError('');
+    setPageSuccess('');
     setShowForm(true);
     setOpenActionsId(null);
     scrollToPublishForm();
   };
 
-  const handleLocalImagesUpload = async (
+  const handleLocalImagesUpload = (
     event: React.ChangeEvent<HTMLInputElement>
   ) => {
     setFormError('');
@@ -359,21 +344,29 @@ export default function SellerDashboardPage() {
       return;
     }
 
-    try {
-      const base64Images = await Promise.all(files.map(readFileAsBase64));
+    const previews = files.map((file) => URL.createObjectURL(file));
 
-      setProductImages(base64Images.slice(0, 2));
-      setProductImageNames(files.map((file) => file.name).slice(0, 2));
-    } catch {
-      setFormError('No se pudieron leer las imágenes. Intenta nuevamente.');
-    } finally {
-      event.target.value = '';
-    }
+    setProductImageFiles(files.slice(0, 2));
+    setProductImagePreviews(previews.slice(0, 2));
+    setProductImageNames(files.map((file) => file.name).slice(0, 2));
+
+    event.target.value = '';
   };
 
   const handleRemoveImage = (indexToRemove: number) => {
-    setProductImages((currentImages) =>
-      currentImages.filter((_, index) => index !== indexToRemove)
+    if (editingProduct && productImageFiles.length === 0) {
+      setFormError(
+        'Para cambiar las imágenes actuales, adjunta nuevas imágenes. Las nuevas reemplazarán a las anteriores.'
+      );
+      return;
+    }
+
+    setProductImageFiles((currentFiles) =>
+      currentFiles.filter((_, index) => index !== indexToRemove)
+    );
+
+    setProductImagePreviews((currentPreviews) =>
+      currentPreviews.filter((_, index) => index !== indexToRemove)
     );
 
     setProductImageNames((currentNames) =>
@@ -381,114 +374,122 @@ export default function SellerDashboardPage() {
     );
   };
 
-  const handleCreateOrUpdateProduct = (event: React.FormEvent) => {
-    event.preventDefault();
-    setFormError('');
-    setFormSuccess('');
-
+  const validateProductForm = () => {
     if (!editingProduct && !canPublish) {
-      setFormError('Alcanzaste el límite de publicaciones de tu plan actual.');
-      return;
+      return 'Alcanzaste el límite de publicaciones de tu plan actual.';
     }
 
     if (!productTitle.trim()) {
-      setFormError('Ingresa el nombre del producto.');
-      return;
+      return 'Ingresa el nombre del producto.';
     }
 
     if (!productDescription.trim()) {
-      setFormError('Ingresa una descripción del producto.');
-      return;
+      return 'Ingresa una descripción del producto.';
     }
 
     if (!productPrice || Number(productPrice) <= 0) {
-      setFormError('Ingresa un precio válido.');
-      return;
+      return 'Ingresa un precio válido.';
     }
 
     if (!productCity.trim()) {
-      setFormError('Ingresa la ciudad donde se encuentra el producto.');
+      return 'Ingresa la ciudad donde se encuentra el producto.';
+    }
+
+    if (!editingProduct && productImageFiles.length === 0) {
+      return 'Adjunta al menos una imagen del producto.';
+    }
+
+    if (productImageFiles.length > 2) {
+      return 'Solo puedes adjuntar hasta 2 imágenes.';
+    }
+
+    return '';
+  };
+
+  const handleCreateOrUpdateProduct = async (event: React.FormEvent) => {
+    event.preventDefault();
+
+    if (isSavingProduct) return;
+
+    setFormError('');
+    setPageError('');
+    setPageSuccess('');
+
+    const validationError = validateProductForm();
+
+    if (validationError) {
+      setFormError(validationError);
       return;
     }
 
-    const finalImages =
-      productImages.length > 0
-        ? productImages.slice(0, 2)
-        : [DEFAULT_PRODUCT_IMAGE];
-
-    if (editingProduct) {
-      const updatedProducts = localProducts.map((product) => {
-        if (product.id !== editingProduct.id) return product;
-
-        return {
-          ...product,
-          title: productTitle.trim(),
-          description: productDescription.trim(),
-          category: productCategory,
-          condition: productCondition,
-          price: Number(productPrice),
-          city: productCity.trim(),
-          images: finalImages,
-          image: finalImages[0],
-        };
-      });
-
-      saveProducts(updatedProducts);
-      setFormSuccess('Producto actualizado correctamente.');
-      setShowForm(false);
-      resetForm();
-      return;
-    }
-
-    const newProduct: ProductItem = {
-      id: `local-${Date.now()}`,
-      sellerId: user.id,
+    const input: ProductFormInput = {
       title: productTitle.trim(),
       description: productDescription.trim(),
       category: productCategory,
       condition: productCondition,
       price: Number(productPrice),
       city: productCity.trim(),
-      images: finalImages,
-      image: finalImages[0],
-      status: 'active',
-      views: 0,
-      favoriteCount: 0,
-      createdAt: new Date().toISOString(),
     };
 
-    const updatedProducts = [...localProducts, newProduct];
+    setIsSavingProduct(true);
 
-    saveProducts(updatedProducts);
-    setFormSuccess('Producto publicado correctamente.');
-    setShowForm(false);
-    resetForm();
+    try {
+      if (editingProduct) {
+        await updateProduct(editingProduct.id, input, productImageFiles);
+
+        setPageSuccess('Producto actualizado correctamente en Supabase.');
+      } else {
+        await createProduct(input, productImageFiles);
+
+        setPageSuccess('Producto publicado correctamente en Supabase.');
+      }
+
+      await loadSellerProducts();
+
+      setShowForm(false);
+      resetForm();
+    } catch (error: any) {
+      setFormError(
+        error?.message || 'No se pudo guardar el producto en Supabase.'
+      );
+    } finally {
+      setIsSavingProduct(false);
+    }
   };
 
-  const handleMarkAsSold = (productId: string) => {
-    const updatedProducts = localProducts.map((product) => {
-      if (product.id !== productId) return product;
+  const handleMarkAsSold = async (productId: string) => {
+    setPageError('');
+    setPageSuccess('');
 
-      return {
-        ...product,
-        status: 'sold',
-      };
-    });
+    try {
+      await markProductAsSold(productId);
+      await loadSellerProducts();
 
-    saveProducts(updatedProducts);
-    setOpenActionsId(null);
+      setPageSuccess('Producto marcado como vendido.');
+      setOpenActionsId(null);
+    } catch (error: any) {
+      setPageError(
+        error?.message || 'No se pudo marcar el producto como vendido.'
+      );
+    }
   };
 
-  const handleDeleteProduct = () => {
+  const handleDeleteProduct = async () => {
     if (!deleteProduct) return;
 
-    const updatedProducts = localProducts.filter(
-      (product) => product.id !== deleteProduct.id
-    );
+    setPageError('');
+    setPageSuccess('');
 
-    saveProducts(updatedProducts);
-    setDeleteProduct(null);
-    setOpenActionsId(null);
+    try {
+      await deleteSupabaseProduct(deleteProduct.id);
+      await loadSellerProducts();
+
+      setPageSuccess('Producto eliminado correctamente.');
+      setDeleteProduct(null);
+      setOpenActionsId(null);
+    } catch (error: any) {
+      setPageError(error?.message || 'No se pudo eliminar el producto.');
+    }
   };
 
   const getProductImage = (product: ProductItem) => {
@@ -525,20 +526,39 @@ export default function SellerDashboardPage() {
             </p>
           </div>
 
-          {canPublish ? (
-            <Button onClick={openPublishForm}>
-              <Plus className="mr-2 h-4 w-4" />
-              Publicar artículo
+          <div className="flex flex-col gap-2 sm:flex-row">
+            <Button variant="outline" onClick={loadSellerProducts}>
+              <RefreshCw className="mr-2 h-4 w-4" />
+              Actualizar
             </Button>
-          ) : (
-            <Link href="/seller/membership">
-              <Button className="bg-amber-600 hover:bg-amber-700">
-                <Crown className="mr-2 h-4 w-4" />
-                Mejorar membresía
+
+            {canPublish ? (
+              <Button onClick={openPublishForm}>
+                <Plus className="mr-2 h-4 w-4" />
+                Publicar artículo
               </Button>
-            </Link>
-          )}
+            ) : (
+              <Link href="/seller/membership">
+                <Button className="bg-amber-600 hover:bg-amber-700">
+                  <Crown className="mr-2 h-4 w-4" />
+                  Mejorar membresía
+                </Button>
+              </Link>
+            )}
+          </div>
         </div>
+
+        {pageSuccess && (
+          <div className="mb-6 rounded-xl border border-green-200 bg-green-50 p-4 text-sm font-medium text-green-700">
+            {pageSuccess}
+          </div>
+        )}
+
+        {pageError && (
+          <div className="mb-6 rounded-xl border border-red-200 bg-red-50 p-4 text-sm font-medium text-red-700">
+            {pageError}
+          </div>
+        )}
 
         <Card className="mb-8 border-2">
           <CardHeader>
@@ -652,13 +672,14 @@ export default function SellerDashboardPage() {
                   <CardDescription>
                     {editingProduct
                       ? 'Actualiza la información del producto publicado.'
-                      : 'Completa la información del producto usado que deseas vender.'}
+                      : 'El producto se guardará en Supabase y las imágenes en Storage.'}
                   </CardDescription>
                 </div>
 
                 <Button
                   variant="ghost"
                   size="sm"
+                  disabled={isSavingProduct}
                   onClick={() => {
                     setShowForm(false);
                     resetForm();
@@ -676,12 +697,6 @@ export default function SellerDashboardPage() {
                 </div>
               )}
 
-              {formSuccess && (
-                <div className="mb-4 rounded-xl border border-green-200 bg-green-50 p-4 text-sm text-green-700">
-                  {formSuccess}
-                </div>
-              )}
-
               <form onSubmit={handleCreateOrUpdateProduct} className="space-y-4">
                 <div className="grid gap-4 md:grid-cols-2">
                   <div className="space-y-2">
@@ -690,6 +705,7 @@ export default function SellerDashboardPage() {
                       value={productTitle}
                       onChange={(event) => setProductTitle(event.target.value)}
                       placeholder="Ejemplo: iPhone 13 Pro"
+                      disabled={isSavingProduct}
                     />
                   </div>
 
@@ -700,6 +716,7 @@ export default function SellerDashboardPage() {
                       value={productPrice}
                       onChange={(event) => setProductPrice(event.target.value)}
                       placeholder="Ejemplo: 1500"
+                      disabled={isSavingProduct}
                     />
                   </div>
                 </div>
@@ -710,6 +727,7 @@ export default function SellerDashboardPage() {
                     value={productDescription}
                     onChange={(event) => setProductDescription(event.target.value)}
                     placeholder="Describe el estado, uso y detalles del producto"
+                    disabled={isSavingProduct}
                   />
                 </div>
 
@@ -719,6 +737,7 @@ export default function SellerDashboardPage() {
                     <select
                       value={productCategory}
                       onChange={(event) => setProductCategory(event.target.value)}
+                      disabled={isSavingProduct}
                       className="w-full rounded-md border bg-background px-3 py-2 text-sm"
                     >
                       <option>Electrónica</option>
@@ -728,6 +747,9 @@ export default function SellerDashboardPage() {
                       <option>Hogar</option>
                       <option>Muebles</option>
                       <option>Vehículos</option>
+                      <option>Deportes</option>
+                      <option>Música</option>
+                      <option>Libros</option>
                       <option>Otros</option>
                     </select>
                   </div>
@@ -737,6 +759,7 @@ export default function SellerDashboardPage() {
                     <select
                       value={productCondition}
                       onChange={(event) => setProductCondition(event.target.value)}
+                      disabled={isSavingProduct}
                       className="w-full rounded-md border bg-background px-3 py-2 text-sm"
                     >
                       <option>Nuevo</option>
@@ -752,6 +775,7 @@ export default function SellerDashboardPage() {
                       value={productCity}
                       onChange={(event) => setProductCity(event.target.value)}
                       placeholder="Ejemplo: Lima"
+                      disabled={isSavingProduct}
                     />
                   </div>
                 </div>
@@ -762,9 +786,8 @@ export default function SellerDashboardPage() {
                       Adjuntar imágenes del producto
                     </label>
                     <p className="mt-1 text-xs text-muted-foreground">
-                      Puedes adjuntar hasta 2 imágenes desde tu computadora.
-                      Formatos permitidos: JPG, PNG o WEBP. Tamaño máximo: 5 MB
-                      por imagen.
+                      Puedes adjuntar hasta 2 imágenes. Se subirán a Supabase Storage.
+                      JPG, PNG o WEBP. Máximo 5 MB por imagen.
                     </p>
                   </div>
 
@@ -774,7 +797,9 @@ export default function SellerDashboardPage() {
                       Haz clic para adjuntar hasta 2 imágenes
                     </span>
                     <span className="mt-1 text-xs text-muted-foreground">
-                      Selecciona una o dos imágenes del producto
+                      {editingProduct
+                        ? 'Si adjuntas nuevas imágenes, reemplazarán a las actuales'
+                        : 'Selecciona una o dos imágenes del producto'}
                     </span>
 
                     <input
@@ -782,6 +807,7 @@ export default function SellerDashboardPage() {
                       accept="image/png,image/jpeg,image/jpg,image/webp"
                       multiple
                       onChange={handleLocalImagesUpload}
+                      disabled={isSavingProduct}
                       className="hidden"
                     />
                   </label>
@@ -799,8 +825,9 @@ export default function SellerDashboardPage() {
 
                           <button
                             type="button"
+                            disabled={isSavingProduct}
                             onClick={() => handleRemoveImage(index)}
-                            className="text-xs font-semibold text-red-600 hover:text-red-700"
+                            className="text-xs font-semibold text-red-600 hover:text-red-700 disabled:opacity-50"
                           >
                             Quitar
                           </button>
@@ -809,14 +836,14 @@ export default function SellerDashboardPage() {
                     </div>
                   )}
 
-                  {productImages.length > 0 ? (
+                  {productImagePreviews.length > 0 ? (
                     <div className="rounded-xl border bg-white p-3">
                       <p className="mb-3 text-xs font-medium text-muted-foreground">
                         Vista previa:
                       </p>
 
                       <div className="grid gap-3 sm:grid-cols-2">
-                        {productImages.map((image, index) => (
+                        {productImagePreviews.map((image, index) => (
                           <div key={`${image}-${index}`} className="relative">
                             <img
                               src={image}
@@ -840,14 +867,24 @@ export default function SellerDashboardPage() {
                 </div>
 
                 <div className="flex flex-col gap-3 sm:flex-row">
-                  <Button type="submit">
-                    <CheckCircle className="mr-2 h-4 w-4" />
-                    {editingProduct ? 'Guardar cambios' : 'Publicar producto'}
+                  <Button type="submit" disabled={isSavingProduct}>
+                    {isSavingProduct ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Guardando...
+                      </>
+                    ) : (
+                      <>
+                        <CheckCircle className="mr-2 h-4 w-4" />
+                        {editingProduct ? 'Guardar cambios' : 'Publicar producto'}
+                      </>
+                    )}
                   </Button>
 
                   <Button
                     type="button"
                     variant="outline"
+                    disabled={isSavingProduct}
                     onClick={() => {
                       setShowForm(false);
                       resetForm();
@@ -899,7 +936,9 @@ export default function SellerDashboardPage() {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{totalViews.toLocaleString()}</div>
+              <div className="text-2xl font-bold">
+                {totalViews.toLocaleString()}
+              </div>
               <p className="mt-1 text-xs text-muted-foreground">
                 De {sellerProducts.length} productos
               </p>
@@ -1027,7 +1066,7 @@ export default function SellerDashboardPage() {
             <div>
               <CardTitle>Mis productos</CardTitle>
               <CardDescription>
-                Administra tus productos publicados en La Segunda.
+                Administra tus productos publicados en Supabase.
               </CardDescription>
             </div>
 
@@ -1047,7 +1086,12 @@ export default function SellerDashboardPage() {
           </CardHeader>
 
           <CardContent>
-            {sellerProducts.length > 0 ? (
+            {isProductsLoading ? (
+              <div className="py-12 text-center text-muted-foreground">
+                <Loader2 className="mx-auto mb-4 h-8 w-8 animate-spin" />
+                Cargando tus productos...
+              </div>
+            ) : sellerProducts.length > 0 ? (
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead className="border-b">
@@ -1062,7 +1106,7 @@ export default function SellerDashboardPage() {
                   </thead>
 
                   <tbody>
-                    {sellerProducts.map((product: ProductItem) => (
+                    {sellerProducts.map((product) => (
                       <tr key={product.id} className="border-b hover:bg-muted/50">
                         <td className="p-2">
                           <div className="flex items-center gap-2">
@@ -1187,8 +1231,6 @@ export default function SellerDashboardPage() {
             {sellerOrders.length > 0 ? (
               <div className="space-y-4">
                 {sellerOrders.map((order) => {
-                  const product = mockProducts.find((p) => p.id === order.productId);
-
                   return (
                     <div
                       key={order.id}
@@ -1196,7 +1238,7 @@ export default function SellerDashboardPage() {
                     >
                       <div>
                         <h4 className="font-semibold">
-                          {product?.title || 'Producto'}
+                          Producto vendido
                         </h4>
                         <p className="text-sm text-muted-foreground">
                           Orden {order.id} • {order.createdAt}
@@ -1241,7 +1283,7 @@ export default function SellerDashboardPage() {
             <CardHeader>
               <CardTitle>Eliminar producto</CardTitle>
               <CardDescription>
-                Esta acción eliminará el producto de tus publicaciones.
+                Esta acción eliminará el producto de Supabase.
               </CardDescription>
             </CardHeader>
 
