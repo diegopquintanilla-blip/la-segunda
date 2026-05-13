@@ -83,13 +83,13 @@ const PLAN_CONFIG: Record<PlanType, PlanConfig> = {
     price: 'S/ 0',
     badgeClass: 'bg-slate-100 text-slate-800',
   },
- plus: {
-  name: 'La Segunda Plus',
-  limit: 5,
-  commissionRate: 5,
-  price: 'S/ 19.90/mes',
-  badgeClass: 'bg-blue-100 text-blue-800',
-},
+  plus: {
+    name: 'La Segunda Plus',
+    limit: 5,
+    commissionRate: 5,
+    price: 'S/ 19.90/mes',
+    badgeClass: 'bg-blue-100 text-blue-800',
+  },
   premium: {
     name: 'La Segunda Premium',
     limit: Infinity,
@@ -224,6 +224,7 @@ export default function SellerDashboardPage() {
 
   const publishedCount = sellerProducts.length;
   const hasUnlimitedPosts = postingLimit === Infinity;
+
   const remainingPosts = hasUnlimitedPosts
     ? Infinity
     : Math.max(postingLimit - publishedCount, 0);
@@ -235,11 +236,16 @@ export default function SellerDashboardPage() {
     : Math.min((publishedCount / postingLimit) * 100, 100);
 
   const totalRevenue = sellerOrders.reduce((sum, order) => sum + order.amount, 0);
-  const totalSales = sellerOrders.filter((order) => order.status === 'completed').length;
+
+  const totalSales = sellerOrders.filter(
+    (order) => order.status === 'completed'
+  ).length;
+
   const totalViews = sellerProducts.reduce(
     (sum: number, product: any) => sum + (product.views || 0),
     0
   );
+
   const totalFavorites = sellerProducts.reduce(
     (sum: number, product: any) => sum + (product.favoriteCount || 0),
     0
@@ -277,6 +283,27 @@ export default function SellerDashboardPage() {
     setEditingProduct(null);
   };
 
+  const scrollToPublishForm = () => {
+    window.setTimeout(() => {
+      const formElement = document.getElementById('publicar-nuevo-articulo');
+
+      if (formElement) {
+        formElement.scrollIntoView({
+          behavior: 'smooth',
+          block: 'start',
+        });
+      }
+    }, 150);
+  };
+
+  const openPublishForm = () => {
+    resetForm();
+    setFormError('');
+    setFormSuccess('');
+    setShowForm(true);
+    scrollToPublishForm();
+  };
+
   const fillFormForEdit = (product: ProductItem) => {
     const existingImages =
       product.images && product.images.length > 0
@@ -298,7 +325,7 @@ export default function SellerDashboardPage() {
     );
     setShowForm(true);
     setOpenActionsId(null);
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    scrollToPublishForm();
   };
 
   const handleLocalImagesUpload = async (
@@ -385,7 +412,9 @@ export default function SellerDashboardPage() {
     }
 
     const finalImages =
-      productImages.length > 0 ? productImages.slice(0, 2) : [DEFAULT_PRODUCT_IMAGE];
+      productImages.length > 0
+        ? productImages.slice(0, 2)
+        : [DEFAULT_PRODUCT_IMAGE];
 
     if (editingProduct) {
       const updatedProducts = localProducts.map((product) => {
@@ -497,12 +526,7 @@ export default function SellerDashboardPage() {
           </div>
 
           {canPublish ? (
-            <Button
-              onClick={() => {
-                resetForm();
-                setShowForm(!showForm);
-              }}
-            >
+            <Button onClick={openPublishForm}>
               <Plus className="mr-2 h-4 w-4" />
               Publicar artículo
             </Button>
@@ -618,7 +642,7 @@ export default function SellerDashboardPage() {
         </Card>
 
         {showForm && (
-          <Card className="mb-8">
+          <Card id="publicar-nuevo-articulo" className="mb-8 scroll-mt-24">
             <CardHeader>
               <div className="flex items-start justify-between gap-4">
                 <div>
@@ -1008,13 +1032,7 @@ export default function SellerDashboardPage() {
             </div>
 
             {canPublish ? (
-              <Button
-                size="sm"
-                onClick={() => {
-                  resetForm();
-                  setShowForm(true);
-                }}
-              >
+              <Button size="sm" onClick={openPublishForm}>
                 <Plus className="mr-1 h-4 w-4" />
                 Nuevo
               </Button>
@@ -1144,7 +1162,7 @@ export default function SellerDashboardPage() {
                 </p>
 
                 {canPublish ? (
-                  <Button onClick={() => setShowForm(true)}>
+                  <Button onClick={openPublishForm}>
                     Publicar primer producto
                   </Button>
                 ) : (
