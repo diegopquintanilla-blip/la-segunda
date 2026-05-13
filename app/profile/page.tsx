@@ -1038,7 +1038,7 @@ export default function ProfilePage() {
 
             <CardContent className="pt-0">
               <div className="space-y-2 text-sm text-amber-800">
-                <p>Plus: hasta 20 publicaciones y comisión 5%.</p>
+                <p>Plus: hasta 5 publicaciones y comisión 5%.</p>
                 <p>Premium: publicaciones ilimitadas y comisión 2%.</p>
               </div>
 
