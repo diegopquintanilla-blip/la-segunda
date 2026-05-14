@@ -1,7 +1,6 @@
-
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Header } from '@/components/header';
@@ -28,6 +27,7 @@ import {
   Lock,
   Mail,
   MapPin,
+  MoreVertical,
   PackagePlus,
   Save,
   ShieldCheck,
@@ -65,24 +65,42 @@ type ProfileData = {
   created_at: string | null;
 };
 
-type LocalProduct = {
+type ProductRow = {
   id: string;
-  sellerId?: string;
-  userId?: string;
-  ownerId?: string;
-  title?: string;
-  name?: string;
-  description?: string;
-  category?: string;
-  condition?: string;
-  price?: number;
-  city?: string;
-  status?: string;
-  images?: string[];
-  image?: string;
-  views?: number;
-  favoriteCount?: number;
-  createdAt?: string;
+
+  seller_id?: string | null;
+  user_id?: string | null;
+  owner_id?: string | null;
+
+  sellerId?: string | null;
+  userId?: string | null;
+  ownerId?: string | null;
+
+  title?: string | null;
+  name?: string | null;
+  description?: string | null;
+  category?: string | null;
+  condition?: string | null;
+  price?: number | string | null;
+  city?: string | null;
+  status?: string | null;
+
+  images?: string[] | string | null;
+  image?: string | null;
+  image_url?: string | null;
+  thumbnail_url?: string | null;
+
+  views?: number | string | null;
+  views_count?: number | string | null;
+  view_count?: number | string | null;
+
+  favoriteCount?: number | string | null;
+  favorite_count?: number | string | null;
+  favorites_count?: number | string | null;
+
+  created_at?: string | null;
+  createdAt?: string | null;
+  updated_at?: string | null;
 };
 
 // ============================================================
@@ -90,8 +108,8 @@ type LocalProduct = {
 // ============================================================
 
 const PLAN_LIMITS: Record<string, number> = {
-  free: 3,
-  plus: 20,
+  free: 2,
+  plus: 5,
   premium: Infinity,
 };
 
@@ -127,9 +145,103 @@ function getAccountTypeLabel(accountType?: string | null) {
   return 'Comprador';
 }
 
-function getProductImage(product: LocalProduct) {
-  const image = product.images?.[0] || product.image || '';
+function parseImages(value?: string[] | string | null): string[] {
+  if (!value) return [];
+
+  if (Array.isArray(value)) {
+    return value.filter(Boolean);
+  }
+
+  if (typeof value === 'string') {
+    const cleanValue = value.trim();
+
+    if (!cleanValue) return [];
+
+    try {
+      const parsed = JSON.parse(cleanValue);
+
+      if (Array.isArray(parsed)) {
+        return parsed.filter(Boolean);
+      }
+    } catch {
+      return [cleanValue];
+    }
+
+    return [cleanValue];
+  }
+
+  return [];
+}
+
+function getProductImage(product: ProductRow) {
+  const images = parseImages(product.images);
+
+  const image =
+    product.image_url ||
+    images[0] ||
+    product.image ||
+    product.thumbnail_url ||
+    '';
+
   return isValidImageUrl(image) ? image : DEFAULT_PRODUCT_IMAGE;
+}
+
+function getProductTitle(product: ProductRow) {
+  return product.title || product.name || 'Producto sin nombre';
+}
+
+function getProductPrice(product: ProductRow) {
+  return Number(product.price || 0);
+}
+
+function getProductViews(product: ProductRow) {
+  return Number(product.views ?? product.views_count ?? product.view_count ?? 0);
+}
+
+function getProductFavorites(product: ProductRow) {
+  return Number(
+    product.favoriteCount ??
+      product.favorite_count ??
+      product.favorites_count ??
+      0
+  );
+}
+
+function getProductOwnerId(product: ProductRow) {
+  return (
+    product.seller_id ||
+    product.user_id ||
+    product.owner_id ||
+    product.sellerId ||
+    product.userId ||
+    product.ownerId ||
+    ''
+  );
+}
+
+function getProductStatus(product: ProductRow) {
+  return String(product.status || 'active').toLowerCase();
+}
+
+function getStatusLabel(status?: string | null) {
+  const value = String(status || 'active').toLowerCase();
+
+  if (value === 'active') return 'Activo';
+  if (value === 'reserved') return 'Reservado';
+  if (value === 'sold') return 'Vendido';
+  if (value === 'pending') return 'Pendiente';
+  if (value === 'inactive') return 'Inactivo';
+
+  return value;
+}
+
+function sortProductsByDate(products: ProductRow[]) {
+  return [...products].sort((a, b) => {
+    const dateA = new Date(a.created_at || a.createdAt || 0).getTime();
+    const dateB = new Date(b.created_at || b.createdAt || 0).getTime();
+
+    return dateB - dateA;
+  });
 }
 
 // ============================================================
@@ -167,8 +279,9 @@ export default function ProfilePage() {
   // Estado: productos
   // ----------------------------------------------------------
 
-  const [products, setProducts] = useState<LocalProduct[]>([]);
-  const [editingProduct, setEditingProduct] = useState<LocalProduct | null>(null);
+  const [products, setProducts] = useState<ProductRow[]>([]);
+  const [isLoadingProducts, setIsLoadingProducts] = useState(false);
+  const [editingProduct, setEditingProduct] = useState<ProductRow | null>(null);
   const [productMessage, setProductMessage] = useState('');
   const [productError, setProductError] = useState('');
 
@@ -180,6 +293,72 @@ export default function ProfilePage() {
   const [editImage, setEditImage] = useState('');
   const [editStatus, setEditStatus] = useState('active');
   const [isUploadingProductImage, setIsUploadingProductImage] = useState(false);
+  const [isSavingProduct, setIsSavingProduct] = useState(false);
+  const [isDeletingProductId, setIsDeletingProductId] = useState<string | null>(
+    null
+  );
+
+  // ============================================================
+  // FUNCIONES: CARGA DE PRODUCTOS DESDE SUPABASE
+  // ============================================================
+
+  const loadProducts = useCallback(async () => {
+    if (!user?.id) return;
+
+    setIsLoadingProducts(true);
+    setProductError('');
+
+    try {
+      const ownerColumns = ['seller_id', 'user_id', 'owner_id'];
+      let loadedProducts: ProductRow[] | null = null;
+      let lastErrorMessage = '';
+
+      for (const column of ownerColumns) {
+        const { data, error } = await supabase
+          .from('products')
+          .select('*')
+          .eq(column, user.id);
+
+        if (!error && Array.isArray(data)) {
+          loadedProducts = data as ProductRow[];
+          break;
+        }
+
+        if (error?.message) {
+          lastErrorMessage = error.message;
+        }
+      }
+
+      if (!loadedProducts) {
+        const { data, error } = await supabase.from('products').select('*');
+
+        if (error) {
+          throw error;
+        }
+
+        const rows = Array.isArray(data) ? (data as ProductRow[]) : [];
+
+        loadedProducts = rows.filter((product) => {
+          const ownerId = getProductOwnerId(product);
+
+          if (!ownerId) return true;
+
+          return ownerId === user.id;
+        });
+      }
+
+      setProducts(sortProductsByDate(loadedProducts));
+    } catch (err: any) {
+      console.error('[La Segunda] Error cargando productos:', err?.message);
+      setProducts([]);
+      setProductError(
+        err?.message ||
+          'No se pudieron cargar tus productos desde Supabase.'
+      );
+    } finally {
+      setIsLoadingProducts(false);
+    }
+  }, [user?.id]);
 
   // ============================================================
   // EFECTOS
@@ -218,25 +397,10 @@ export default function ProfilePage() {
   }, [user?.id]);
 
   useEffect(() => {
-    if (typeof window === 'undefined') return;
+    if (!isAuthenticated || !user?.id) return;
 
-    try {
-      const rawProducts = localStorage.getItem('la-segunda-products');
-
-      if (!rawProducts) {
-        setProducts([]);
-        return;
-      }
-
-      const parsedProducts = JSON.parse(rawProducts);
-
-      if (Array.isArray(parsedProducts)) {
-        setProducts(parsedProducts);
-      }
-    } catch {
-      setProducts([]);
-    }
-  }, []);
+    loadProducts();
+  }, [isAuthenticated, user?.id, loadProducts]);
 
   // ============================================================
   // DATOS DERIVADOS
@@ -253,8 +417,11 @@ export default function ProfilePage() {
   const displayEmail = profile?.email || currentUser?.email || '';
   const displayCity = profile?.city || currentUser?.city || 'Lima';
   const accountType = profile?.account_type || currentUser?.accountType || 'buyer';
+
   const verificationStatus =
-    profile?.verification_status || currentUser?.verificationStatus || 'pending';
+    profile?.verification_status ||
+    currentUser?.verificationStatus ||
+    'pending';
 
   const membershipType = String(
     profile?.membership_type ||
@@ -266,7 +433,9 @@ export default function ProfilePage() {
 
   const gender = profile?.gender || currentUser?.gender || 'neutral';
   const rating = Number(profile?.rating || currentUser?.rating || 0);
-  const reviewCount = Number(profile?.review_count || currentUser?.reviewCount || 0);
+  const reviewCount = Number(
+    profile?.review_count || currentUser?.reviewCount || 0
+  );
 
   const safeAvatarUrl =
     profile?.avatar_url && isValidImageUrl(profile.avatar_url)
@@ -281,48 +450,48 @@ export default function ProfilePage() {
     if (!user?.id) return [];
 
     return products.filter((product) => {
-      return (
-        product.sellerId === user.id ||
-        product.userId === user.id ||
-        product.ownerId === user.id
-      );
+      const ownerId = getProductOwnerId(product);
+
+      if (!ownerId) return true;
+
+      return ownerId === user.id;
     });
   }, [products, user?.id]);
 
+  const publishedProducts = userProducts.filter((product) => {
+    const status = getProductStatus(product);
+
+    return !['sold', 'deleted', 'inactive', 'archived'].includes(status);
+  });
+
   const activeProducts = userProducts.filter((product) => {
-    return product.status === 'active' || !product.status;
+    const status = getProductStatus(product);
+
+    return status === 'active' || !status;
   });
 
   const totalViews = userProducts.reduce(
-    (sum, product) => sum + Number(product.views || 0),
+    (sum, product) => sum + getProductViews(product),
     0
   );
 
   const totalFavorites = userProducts.reduce(
-    (sum, product) => sum + Number(product.favoriteCount || 0),
+    (sum, product) => sum + getProductFavorites(product),
     0
   );
 
-  const isVerified = verificationStatus === 'verified';
-  const planLimit = PLAN_LIMITS[membershipType] ?? 3;
-  const postingLimit = isVerified ? planLimit : Math.min(planLimit, 2);
+  const profileLimit = Number(profile?.monthly_listing_limit || 0);
+  const planLimit = PLAN_LIMITS[membershipType] ?? 2;
+
+  const postingLimit = profileLimit > 0 ? profileLimit : planLimit;
 
   const remainingPosts =
     postingLimit === Infinity
       ? Infinity
-      : Math.max(postingLimit - activeProducts.length, 0);
+      : Math.max(postingLimit - publishedProducts.length, 0);
 
-  // ============================================================
-  // FUNCIONES: STORAGE LOCAL
-  // ============================================================
-
-  const saveProductsToLocalStorage = (updatedProducts: LocalProduct[]) => {
-    setProducts(updatedProducts);
-
-    if (typeof window !== 'undefined') {
-      localStorage.setItem('la-segunda-products', JSON.stringify(updatedProducts));
-    }
-  };
+  const canPublish =
+    remainingPosts === Infinity || Number(remainingPosts || 0) > 0;
 
   // ============================================================
   // FUNCIONES: AVATAR
@@ -435,6 +604,7 @@ export default function ProfilePage() {
 
       setProfile((currentProfile) => {
         if (!currentProfile) return currentProfile;
+
         return {
           ...currentProfile,
           bio: bioText.trim(),
@@ -462,17 +632,17 @@ export default function ProfilePage() {
   // FUNCIONES: PRODUCTOS
   // ============================================================
 
-  const openEditProduct = (product: LocalProduct) => {
+  const openEditProduct = (product: ProductRow) => {
     setProductMessage('');
     setProductError('');
 
     setEditingProduct(product);
-    setEditTitle(product.title || product.name || '');
+    setEditTitle(getProductTitle(product));
     setEditDescription(product.description || '');
     setEditPrice(String(product.price || ''));
     setEditCity(product.city || '');
     setEditCondition(product.condition || 'Bueno');
-    setEditImage(product.images?.[0] || product.image || '');
+    setEditImage(getProductImage(product));
     setEditStatus(product.status || 'active');
 
     setTimeout(() => {
@@ -551,7 +721,100 @@ export default function ProfilePage() {
     }
   };
 
-  const handleSaveProduct = () => {
+  const buildProductUpdatePayload = (
+    product: ProductRow,
+    finalImage: string
+  ) => {
+    const payload: Record<string, any> = {};
+
+    if ('title' in product || !('name' in product)) {
+      payload.title = editTitle.trim();
+    }
+
+    if ('name' in product) {
+      payload.name = editTitle.trim();
+    }
+
+    if ('description' in product) {
+      payload.description = editDescription.trim();
+    }
+
+    if ('price' in product) {
+      payload.price = Number(editPrice);
+    }
+
+    if ('city' in product) {
+      payload.city = editCity.trim();
+    }
+
+    if ('condition' in product) {
+      payload.condition = editCondition;
+    }
+
+    if ('status' in product) {
+      payload.status = editStatus;
+    }
+
+    if ('image_url' in product) {
+      payload.image_url = finalImage;
+    }
+
+    if ('images' in product) {
+      payload.images = [finalImage];
+    }
+
+    if ('image' in product) {
+      payload.image = finalImage;
+    }
+
+    if ('updated_at' in product) {
+      payload.updated_at = new Date().toISOString();
+    }
+
+    return payload;
+  };
+
+  const updateProductInSupabase = async (
+    productId: string,
+    payload: Record<string, any>
+  ) => {
+    if (!user?.id) {
+      throw new Error('Debes iniciar sesión para editar el producto.');
+    }
+
+    const ownerColumns = ['seller_id', 'user_id', 'owner_id'];
+
+    for (const column of ownerColumns) {
+      const { data, error } = await supabase
+        .from('products')
+        .update(payload)
+        .eq('id', productId)
+        .eq(column, user.id)
+        .select('*')
+        .maybeSingle();
+
+      if (!error && data) {
+        return data as ProductRow;
+      }
+    }
+
+    const { data, error } = await supabase
+      .from('products')
+      .update(payload)
+      .eq('id', productId)
+      .select('*')
+      .maybeSingle();
+
+    if (error) throw error;
+
+    if (!data) {
+      throw new Error('No se pudo actualizar el producto.');
+    }
+
+    return data as ProductRow;
+  };
+
+  const handleSaveProduct = async () => {
     setProductMessage('');
     setProductError('');
 
@@ -572,44 +835,80 @@ export default function ProfilePage() {
       return;
     }
 
-    const updatedProducts = products.map((product) => {
-      if (product.id !== editingProduct.id) return product;
+    setIsSavingProduct(true);
 
-      const finalImage = editImage.trim() || product.images?.[0] || product.image || DEFAULT_PRODUCT_IMAGE;
+    try {
+      const finalImage =
+        editImage.trim() || getProductImage(editingProduct) || DEFAULT_PRODUCT_IMAGE;
 
-      return {
-        ...product,
-        title: editTitle.trim(),
-        name: editTitle.trim(),
-        description: editDescription.trim(),
-        price: Number(editPrice),
-        city: editCity.trim(),
-        condition: editCondition,
-        status: editStatus,
-        images: [finalImage],
-        image: finalImage,
-      };
-    });
+      const payload = buildProductUpdatePayload(editingProduct, finalImage);
 
-    saveProductsToLocalStorage(updatedProducts);
-    setProductMessage('Producto actualizado correctamente.');
-    closeEditProduct();
+      await updateProductInSupabase(editingProduct.id, payload);
+      await loadProducts();
+
+      setProductMessage('Producto actualizado correctamente.');
+      closeEditProduct();
+    } catch (err: any) {
+      setProductError(
+        err?.message || 'No se pudo actualizar el producto en Supabase.'
+      );
+    } finally {
+      setIsSavingProduct(false);
+    }
   };
 
-  const handleDeleteProduct = (productId: string) => {
+  const deleteProductInSupabase = async (productId: string) => {
+    if (!user?.id) {
+      throw new Error('Debes iniciar sesión para eliminar el producto.');
+    }
+
+    const ownerColumns = ['seller_id', 'user_id', 'owner_id'];
+
+    for (const column of ownerColumns) {
+      const { data, error } = await supabase
+        .from('products')
+        .delete()
+        .eq('id', productId)
+        .eq(column, user.id)
+        .select('id')
+        .maybeSingle();
+
+      if (!error && data) {
+        return;
+      }
+    }
+
+    const { error } = await supabase.from('products').delete().eq('id', productId);
+
+    if (error) throw error;
+  };
+
+  const handleDeleteProduct = async (productId: string) => {
     const confirmed = window.confirm(
       '¿Seguro que deseas eliminar este producto publicado?'
     );
 
     if (!confirmed) return;
 
-    const updatedProducts = products.filter((product) => product.id !== productId);
+    setIsDeletingProductId(productId);
+    setProductMessage('');
+    setProductError('');
 
-    saveProductsToLocalStorage(updatedProducts);
-    setProductMessage('Producto eliminado correctamente.');
+    try {
+      await deleteProductInSupabase(productId);
+      await loadProducts();
 
-    if (editingProduct?.id === productId) {
-      closeEditProduct();
+      setProductMessage('Producto eliminado correctamente.');
+
+      if (editingProduct?.id === productId) {
+        closeEditProduct();
+      }
+    } catch (err: any) {
+      setProductError(
+        err?.message || 'No se pudo eliminar el producto en Supabase.'
+      );
+    } finally {
+      setIsDeletingProductId(null);
     }
   };
 
@@ -745,6 +1044,7 @@ export default function ProfilePage() {
                       <h1 className="text-2xl font-bold leading-tight text-slate-950 md:text-3xl">
                         {displayName}
                       </h1>
+
                       {getVerificationBadge()}
                       {getPlanBadge()}
                     </div>
@@ -777,7 +1077,9 @@ export default function ProfilePage() {
 
                     <div className="flex items-center gap-2 text-sm text-slate-500">
                       <Star className="h-4 w-4 fill-yellow-400 text-yellow-400" />
-                      <span className="font-semibold text-slate-900">{rating}</span>
+                      <span className="font-semibold text-slate-900">
+                        {rating}
+                      </span>
                       <span>({reviewCount} calificaciones)</span>
                     </div>
                   </div>
@@ -963,7 +1265,9 @@ export default function ProfilePage() {
               <div className="grid grid-cols-3 gap-3">
                 <div className="rounded-xl bg-slate-50 p-3">
                   <p className="text-xs text-slate-500">Publicados</p>
-                  <p className="text-2xl font-bold">{activeProducts.length}</p>
+                  <p className="text-2xl font-bold">
+                    {publishedProducts.length}
+                  </p>
                 </div>
 
                 <div className="rounded-xl bg-slate-50 p-3">
@@ -982,12 +1286,18 @@ export default function ProfilePage() {
               </div>
 
               <div className="flex flex-col gap-3 sm:flex-row">
-                <Link href="/seller/dashboard" className="w-full">
-                  <Button className="w-full">
-                    <PackagePlus className="mr-2 h-4 w-4" />
-                    Publicar artículo
-                  </Button>
-                </Link>
+                <Button
+                  className="w-full"
+                  disabled={!canPublish}
+                  onClick={() => {
+                    if (canPublish) {
+                      router.push('/seller/dashboard');
+                    }
+                  }}
+                >
+                  <PackagePlus className="mr-2 h-4 w-4" />
+                  Publicar artículo
+                </Button>
 
                 <Link href="/seller/membership" className="w-full">
                   <Button variant="outline" className="w-full bg-white">
@@ -1103,7 +1413,9 @@ export default function ProfilePage() {
 
                 <div className="grid gap-4 md:grid-cols-2">
                   <div className="space-y-2 md:col-span-2">
-                    <label className="text-sm font-medium">Nombre del producto</label>
+                    <label className="text-sm font-medium">
+                      Nombre del producto
+                    </label>
                     <input
                       value={editTitle}
                       onChange={(event) => setEditTitle(event.target.value)}
@@ -1158,7 +1470,9 @@ export default function ProfilePage() {
                   </div>
 
                   <div className="space-y-2">
-                    <label className="text-sm font-medium">Estado de publicación</label>
+                    <label className="text-sm font-medium">
+                      Estado de publicación
+                    </label>
                     <select
                       value={editStatus}
                       onChange={(event) => setEditStatus(event.target.value)}
@@ -1168,11 +1482,14 @@ export default function ProfilePage() {
                       <option value="reserved">Reservado</option>
                       <option value="sold">Vendido</option>
                       <option value="pending">Pendiente</option>
+                      <option value="inactive">Inactivo</option>
                     </select>
                   </div>
 
                   <div className="space-y-2 md:col-span-2">
-                    <label className="text-sm font-medium">Subir foto del producto</label>
+                    <label className="text-sm font-medium">
+                      Subir foto del producto
+                    </label>
                     <input
                       type="file"
                       accept="image/*"
@@ -1180,6 +1497,7 @@ export default function ProfilePage() {
                       disabled={isUploadingProductImage}
                       className="w-full rounded-md border bg-background px-3 py-2 text-sm"
                     />
+
                     {isUploadingProductImage && (
                       <p className="flex items-center gap-2 text-xs text-muted-foreground">
                         <Loader2 className="h-3 w-3 animate-spin" />
@@ -1201,9 +1519,18 @@ export default function ProfilePage() {
               </div>
 
               <div className="flex flex-col gap-3 sm:flex-row">
-                <Button onClick={handleSaveProduct}>
-                  <Save className="mr-2 h-4 w-4" />
-                  Guardar cambios
+                <Button onClick={handleSaveProduct} disabled={isSavingProduct}>
+                  {isSavingProduct ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Guardando...
+                    </>
+                  ) : (
+                    <>
+                      <Save className="mr-2 h-4 w-4" />
+                      Guardar cambios
+                    </>
+                  )}
                 </Button>
 
                 <Button variant="outline" onClick={closeEditProduct}>
@@ -1217,93 +1544,157 @@ export default function ProfilePage() {
         {/* MIS PRODUCTOS */}
         <Card className="mb-5 rounded-2xl border-slate-200 bg-white shadow-sm">
           <CardHeader className="pb-3">
-            <CardTitle className="text-lg">Mis productos</CardTitle>
-            <CardDescription>
-              Productos publicados desde tu cuenta. Puedes editar precio,
-              descripción, foto y estado.
-            </CardDescription>
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+              <div>
+                <CardTitle className="text-lg">Mis productos</CardTitle>
+                <CardDescription>
+                  Mis productos publicados en Supabase.
+                </CardDescription>
+              </div>
+
+              <Link href="/seller/membership">
+                <Button size="sm" className="bg-orange-600 hover:bg-orange-700">
+                  <Lock className="mr-2 h-4 w-4" />
+                  Plan
+                </Button>
+              </Link>
+            </div>
           </CardHeader>
 
           <CardContent className="pt-0">
-            {userProducts.length > 0 ? (
-              <div className="grid gap-4 md:grid-cols-2">
-                {userProducts.map((product) => {
-                  const imageUrl = getProductImage(product);
+            {isLoadingProducts ? (
+              <div className="flex items-center justify-center rounded-xl border border-dashed p-10">
+                <div className="text-center">
+                  <Loader2 className="mx-auto mb-3 h-8 w-8 animate-spin text-primary" />
+                  <p className="text-sm text-muted-foreground">
+                    Cargando productos desde Supabase...
+                  </p>
+                </div>
+              </div>
+            ) : userProducts.length > 0 ? (
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[850px] border-collapse text-sm">
+                  <thead>
+                    <tr className="border-b text-left">
+                      <th className="px-2 py-3 font-semibold text-slate-900">
+                        Producto
+                      </th>
+                      <th className="px-2 py-3 font-semibold text-slate-900">
+                        Precio
+                      </th>
+                      <th className="px-2 py-3 font-semibold text-slate-900">
+                        Vistas
+                      </th>
+                      <th className="px-2 py-3 font-semibold text-slate-900">
+                        Favoritos
+                      </th>
+                      <th className="px-2 py-3 font-semibold text-slate-900">
+                        Estado
+                      </th>
+                      <th className="px-2 py-3 font-semibold text-slate-900">
+                        Acciones
+                      </th>
+                    </tr>
+                  </thead>
 
-                  return (
-                    <div
-                      key={product.id}
-                      className="flex flex-col gap-4 rounded-xl border bg-white p-4 shadow-sm sm:flex-row"
-                    >
-                      <img
-                        src={imageUrl}
-                        alt={product.title || product.name || 'Producto'}
-                        className="h-28 w-full rounded-lg object-cover sm:w-32"
-                      />
+                  <tbody>
+                    {userProducts.map((product) => {
+                      const status = getProductStatus(product);
 
-                      <div className="min-w-0 flex-1">
-                        <div className="mb-2 flex items-start justify-between gap-3">
-                          <div>
-                            <h3 className="line-clamp-1 font-semibold">
-                              {product.title || product.name}
-                            </h3>
+                      return (
+                        <tr key={product.id} className="border-b">
+                          <td className="px-2 py-3">
+                            <div className="flex items-center gap-3">
+                              <img
+                                src={getProductImage(product)}
+                                alt={getProductTitle(product)}
+                                className="h-12 w-12 rounded-md object-cover"
+                              />
 
-                            <p className="mt-1 line-clamp-2 text-sm text-slate-500">
-                              {product.description || 'Sin descripción'}
-                            </p>
-                          </div>
+                              <div className="min-w-0">
+                                <p className="line-clamp-1 font-medium text-slate-950">
+                                  {getProductTitle(product)}
+                                </p>
+                                <p className="line-clamp-1 text-xs text-slate-500">
+                                  {product.city || 'Perú'}
+                                </p>
+                              </div>
+                            </div>
+                          </td>
 
-                          <Badge variant="outline" className="bg-slate-50">
-                            {product.status || 'active'}
-                          </Badge>
-                        </div>
+                          <td className="px-2 py-3">
+                            S/{' '}
+                            {getProductPrice(product).toLocaleString('es-PE', {
+                              minimumFractionDigits: 0,
+                              maximumFractionDigits: 2,
+                            })}
+                          </td>
 
-                        <p className="text-lg font-bold text-primary">
-                          S/ {Number(product.price || 0).toLocaleString('es-PE')}
-                        </p>
+                          <td className="px-2 py-3">
+                            <span className="inline-flex items-center gap-1">
+                              <Eye className="h-4 w-4 text-slate-500" />
+                              {getProductViews(product)}
+                            </span>
+                          </td>
 
-                        <div className="mt-2 flex flex-wrap items-center gap-3 text-sm text-slate-500">
-                          <span className="flex items-center gap-1">
-                            <MapPin className="h-4 w-4" />
-                            {product.city || 'Perú'}
-                          </span>
+                          <td className="px-2 py-3">
+                            <span className="inline-flex items-center gap-1">
+                              <Heart className="h-4 w-4 text-slate-500" />
+                              {getProductFavorites(product)}
+                            </span>
+                          </td>
 
-                          <span>{product.condition || 'Bueno'}</span>
+                          <td className="px-2 py-3">
+                            <Badge
+                              className={
+                                status === 'active'
+                                  ? 'bg-blue-900 text-white'
+                                  : status === 'sold'
+                                    ? 'bg-slate-700 text-white'
+                                    : status === 'reserved'
+                                      ? 'bg-amber-100 text-amber-800'
+                                      : 'bg-slate-100 text-slate-700'
+                              }
+                            >
+                              {getStatusLabel(status)}
+                            </Badge>
+                          </td>
 
-                          <span className="flex items-center gap-1">
-                            <Eye className="h-4 w-4" />
-                            {product.views || 0}
-                          </span>
+                          <td className="px-2 py-3">
+                            <div className="flex items-center gap-2">
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="bg-white"
+                                onClick={() => openEditProduct(product)}
+                              >
+                                <Edit3 className="mr-2 h-4 w-4" />
+                                Editar
+                              </Button>
 
-                          <span className="flex items-center gap-1">
-                            <Heart className="h-4 w-4" />
-                            {product.favoriteCount || 0}
-                          </span>
-                        </div>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                disabled={isDeletingProductId === product.id}
+                                className="bg-white text-red-600 hover:text-red-700"
+                                onClick={() => handleDeleteProduct(product.id)}
+                              >
+                                {isDeletingProductId === product.id ? (
+                                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                ) : (
+                                  <Trash2 className="mr-2 h-4 w-4" />
+                                )}
+                                Eliminar
+                              </Button>
 
-                        <div className="mt-4 flex flex-col gap-2 sm:flex-row">
-                          <Button
-                            size="sm"
-                            onClick={() => openEditProduct(product)}
-                          >
-                            <Edit3 className="mr-2 h-4 w-4" />
-                            Editar
-                          </Button>
-
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="bg-white text-red-600 hover:text-red-700"
-                            onClick={() => handleDeleteProduct(product.id)}
-                          >
-                            <Trash2 className="mr-2 h-4 w-4" />
-                            Eliminar
-                          </Button>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
+                              <MoreVertical className="h-4 w-4 text-slate-400" />
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
               </div>
             ) : (
               <div className="rounded-xl border border-dashed p-8 text-center">
