@@ -122,32 +122,47 @@ export async function toggleFavorite(productId: string) {
 export async function listFavoriteProducts() {
   const userId = await getCurrentUserId();
 
-  const { data, error } = await supabase
+  const { data: favoriteRows, error: favoritesError } = await supabase
     .from('favorites')
-    .select(
-      `
-      id,
-      product_id,
-      created_at,
-      products (*)
-    `
-    )
+    .select('id, product_id, created_at')
     .eq('user_id', userId)
     .order('created_at', { ascending: false });
 
-  if (error) {
-    throw new Error(error.message);
+  if (favoritesError) {
+    throw new Error(favoritesError.message);
   }
 
-  return (data || [])
-    .map((row: any) => {
-      const product = Array.isArray(row.products)
-        ? row.products[0]
-        : row.products;
+  const productIds = (favoriteRows || []).map((favorite) =>
+    String(favorite.product_id)
+  );
+
+  if (productIds.length === 0) {
+    return [];
+  }
+
+  const { data: products, error: productsError } = await supabase
+    .from('products')
+    .select('*')
+    .in('id', productIds)
+    .eq('status', 'active');
+
+  if (productsError) {
+    throw new Error(productsError.message);
+  }
+
+  const productsById = new Map<string, SupabaseProduct>();
+
+  (products || []).forEach((product) => {
+    productsById.set(String(product.id), product as SupabaseProduct);
+  });
+
+  return productIds
+    .map((productId) => {
+      const product = productsById.get(productId);
 
       if (!product) return null;
 
-      return mapSupabaseProduct(product as SupabaseProduct);
+      return mapSupabaseProduct(product);
     })
     .filter(Boolean);
 }
