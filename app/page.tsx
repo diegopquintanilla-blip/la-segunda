@@ -18,12 +18,12 @@ export default function HomePage() {
         <div className="container mx-auto px-4">
           <div className="max-w-2xl">
             <h1 className="mb-4 text-balance text-4xl font-bold md:text-5xl">
-              Compra y vende productos de segunda mano con confianza
+              Compra, vende y descubre productos en un solo marketplace
             </h1>
 
             <p className="mb-8 text-lg opacity-90 md:text-xl">
-              La Segunda es el marketplace confiable donde miles de usuarios compran
-              y venden artículos de calidad.
+              Encuentra oportunidades, publica tus productos y gestiona tus ventas desde una
+              plataforma pensada para crecer contigo.
             </p>
 
             <div className="flex flex-col gap-4 sm:flex-row">
