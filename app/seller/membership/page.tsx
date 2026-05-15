@@ -1,5 +1,6 @@
 'use client';
 
+import { supabase } from '@/lib/supabase/client';
 import { Header } from '@/components/header';
 import { useAuth } from '@/lib/auth-context';
 import { Button } from '@/components/ui/button';
@@ -239,15 +240,24 @@ export default function MembershipPage() {
     setIsPaymentLoading(plan.id);
 
     try {
-      const response = await fetch('/api/payments/create-membership', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          planId: plan.id,
-        }),
-      });
+      const { data: sessionData } = await supabase.auth.getSession();
+
+const accessToken = sessionData.session?.access_token;
+
+if (!accessToken) {
+  throw new Error('Tu sesión expiró. Vuelve a iniciar sesión.');
+}
+
+const response = await fetch('/api/payments/create-membership', {
+  method: 'POST',
+  headers: {
+    'Content-Type': 'application/json',
+    Authorization: `Bearer ${accessToken}`,
+  },
+  body: JSON.stringify({
+    planId: plan.id,
+  }),
+});
 
       const data = await response.json().catch(() => null);
 
