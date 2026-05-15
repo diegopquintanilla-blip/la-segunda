@@ -153,7 +153,7 @@ export default function SellerDashboardPage() {
   const [isProductsLoading, setIsProductsLoading] = useState(true);
   const [isSavingProduct, setIsSavingProduct] = useState(false);
   const [pageError, setPageError] = useState('');
-  const [pageSuccess, setPageSuccess] = '';
+  const [pageSuccess, setPageSuccess] = useState('');
 
   const [membership, setMembership] = useState<NormalizedMembership>(
     DEFAULT_FREE_MEMBERSHIP
@@ -234,8 +234,8 @@ export default function SellerDashboardPage() {
   const postingLimit =
     currentPlanType === 'free'
       ? isVerified
-        ? currentPlan.limit
-        : Math.min(currentPlan.limit, 2)
+        ? 3
+        : 2
       : currentPlan.limit;
 
   const publishedCount = sellerProducts.length;
@@ -308,14 +308,18 @@ export default function SellerDashboardPage() {
           block: 'start',
         });
       }
-    }, 150);
+    }, 250);
   };
 
   const openPublishForm = () => {
     resetForm();
+
     setPageError('');
     setPageSuccess('');
+    setFormError('');
+    setEditingProduct(null);
     setShowForm(true);
+
     scrollToPublishForm();
   };
 
@@ -567,18 +571,24 @@ export default function SellerDashboardPage() {
 
           <div className="flex flex-col gap-2 sm:flex-row">
             <Button
+              type="button"
               variant="outline"
               onClick={() => {
                 loadSellerProducts();
                 loadMembership();
               }}
+              disabled={isProductsLoading || isMembershipLoading}
             >
               <RefreshCw className="mr-2 h-4 w-4" />
               Actualizar
             </Button>
 
             {canPublish ? (
-              <Button onClick={openPublishForm}>
+              <Button
+                type="button"
+                onClick={openPublishForm}
+                disabled={isProductsLoading || isMembershipLoading || isSavingProduct}
+              >
                 <Plus className="mr-2 h-4 w-4" />
                 Publicar artículo
               </Button>
@@ -715,7 +725,10 @@ export default function SellerDashboardPage() {
         </Card>
 
         {showForm && (
-          <Card id="publicar-nuevo-articulo" className="mb-8 scroll-mt-24">
+          <Card
+            id="publicar-nuevo-articulo"
+            className="mb-8 scroll-mt-28 border-2 border-primary/20"
+          >
             <CardHeader>
               <div className="flex items-start justify-between gap-4">
                 <div>
@@ -730,6 +743,7 @@ export default function SellerDashboardPage() {
                 </div>
 
                 <Button
+                  type="button"
                   variant="ghost"
                   size="sm"
                   disabled={isSavingProduct}
@@ -1084,6 +1098,7 @@ export default function SellerDashboardPage() {
               <CardTitle>Plan actual</CardTitle>
               <CardDescription>Membresía real registrada en Supabase.</CardDescription>
             </CardHeader>
+
             <CardContent className="space-y-4">
               <div className="flex items-center justify-between gap-4">
                 <div>
@@ -1092,6 +1107,7 @@ export default function SellerDashboardPage() {
                     Comisión: {currentPlan.commissionRate}%
                   </div>
                 </div>
+
                 <Badge className={currentPlan.badgeClass}>
                   {currentPlan.price}
                 </Badge>
@@ -1110,6 +1126,7 @@ export default function SellerDashboardPage() {
               <CardTitle>Resumen de ganancias</CardTitle>
               <CardDescription>Período actual</CardDescription>
             </CardHeader>
+
             <CardContent className="space-y-4">
               <div className="space-y-2 text-sm">
                 <div className="flex justify-between">
@@ -1118,6 +1135,7 @@ export default function SellerDashboardPage() {
                     S/ {totalRevenue.toLocaleString()}
                   </span>
                 </div>
+
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">
                     Comisión ({currentPlan.commissionRate}%):
@@ -1126,6 +1144,7 @@ export default function SellerDashboardPage() {
                     -S/ {commissionEarnings.toLocaleString()}
                   </span>
                 </div>
+
                 <div className="flex justify-between border-t pt-2">
                   <span className="font-semibold">Ganancias netas:</span>
                   <span className="font-bold text-primary">
@@ -1147,7 +1166,12 @@ export default function SellerDashboardPage() {
             </div>
 
             {canPublish ? (
-              <Button size="sm" onClick={openPublishForm}>
+              <Button
+                type="button"
+                size="sm"
+                onClick={openPublishForm}
+                disabled={isProductsLoading || isMembershipLoading || isSavingProduct}
+              >
                 <Plus className="mr-1 h-4 w-4" />
                 Nuevo
               </Button>
@@ -1282,7 +1306,7 @@ export default function SellerDashboardPage() {
                 </p>
 
                 {canPublish ? (
-                  <Button onClick={openPublishForm}>
+                  <Button type="button" onClick={openPublishForm}>
                     Publicar primer producto
                   </Button>
                 ) : (
