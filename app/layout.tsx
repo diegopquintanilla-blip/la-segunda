@@ -2,55 +2,58 @@ import type { Metadata } from 'next';
 import { Geist, Geist_Mono } from 'next/font/google';
 import { Analytics } from '@vercel/analytics/next';
 import { AuthProvider } from '@/lib/auth-context';
+import { SupportBot } from '@/components/support/support-bot';
 import './globals.css';
 
 const _geist = Geist({ subsets: ['latin'] });
 const _geistMono = Geist_Mono({ subsets: ['latin'] });
 
 export const metadata: Metadata = {
-  metadataBase: new URL('https://la-segunda.vercel.app'),
-
-  title: 'La Segunda | Compra y vende productos de segunda mano en Perú',
-
+  title: 'La Segunda Market | Compra y vende productos online',
   description:
-    'La Segunda es un marketplace peruano para comprar y vender productos de segunda mano con confianza, chat protegido y vendedores verificados.',
-
+    'Compra, vende y descubre productos en un marketplace seguro, simple y confiable.',
+  metadataBase: new URL('https://lasegundamarket.app'),
   generator: 'v0.app',
-
   openGraph: {
-    title: 'La Segunda | Marketplace de segunda mano en Perú',
+    title: 'La Segunda Market',
     description:
-      'Compra y vende productos de segunda mano de forma segura. Publica artículos, guarda favoritos y contacta vendedores dentro de La Segunda.',
-    url: 'https://la-segunda.vercel.app',
-    siteName: 'La Segunda',
+      'Compra, vende y descubre productos en un marketplace seguro, simple y confiable.',
+    url: 'https://lasegundamarket.app',
+    siteName: 'La Segunda Market',
     images: [
       {
         url: '/lasegunda.png',
         width: 1200,
         height: 630,
-        alt: 'La Segunda marketplace de segunda mano en Perú',
+        alt: 'La Segunda Market',
       },
     ],
     locale: 'es_PE',
     type: 'website',
   },
-
   twitter: {
     card: 'summary_large_image',
-    title: 'La Segunda | Marketplace de segunda mano en Perú',
+    title: 'La Segunda Market',
     description:
-      'Compra y vende productos de segunda mano de forma segura en Perú.',
+      'Compra, vende y descubre productos en un marketplace seguro, simple y confiable.',
     images: ['/lasegunda.png'],
   },
-
   icons: {
     icon: [
       {
-        url: '/lasegunda.png',
-        type: 'image/png',
+        url: '/icon-light-32x32.png',
+        media: '(prefers-color-scheme: light)',
+      },
+      {
+        url: '/icon-dark-32x32.png',
+        media: '(prefers-color-scheme: dark)',
+      },
+      {
+        url: '/icon.svg',
+        type: 'image/svg+xml',
       },
     ],
-    apple: '/lasegunda.png',
+    apple: '/apple-icon.png',
   },
 };
 
@@ -62,7 +65,11 @@ export default function RootLayout({
   return (
     <html lang="es" className="bg-background">
       <body className="font-sans antialiased">
-        <AuthProvider>{children}</AuthProvider>
+        <AuthProvider>
+          {children}
+          <SupportBot />
+        </AuthProvider>
+
         {process.env.NODE_ENV === 'production' && <Analytics />}
       </body>
     </html>
