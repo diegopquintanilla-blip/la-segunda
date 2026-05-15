@@ -112,6 +112,28 @@ const PLAN_CONFIG: Record<PlanType, PlanConfig> = {
   },
 };
 
+const CONTACT_SECURITY_WARNING =
+  'Por seguridad, está prohibido colocar números móviles, WhatsApp, correos electrónicos o datos de contacto en la descripción. Todo aviso que intente compartir contacto externo será eliminado.';
+
+function hasForbiddenContactInfo(value: string) {
+  const text = value.toLowerCase();
+
+  const emailRegex =
+    /[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}/i;
+
+  const peruMobileRegex =
+    /(?:\+?51[\s.-]*)?(?:9[\s.-]*\d[\s.-]*\d[\s.-]*\d[\s.-]*\d[\s.-]*\d[\s.-]*\d[\s.-]*\d[\s.-]*\d)/;
+
+  const contactWordsRegex =
+    /(whatsapp|wsp|wasap|telegram|gmail|hotmail|outlook|yahoo|correo|email|e-mail|arroba|celular|móvil|movil|teléfono|telefono|contacto|contáctame|contactame|llámame|llamame|escríbeme|escribeme|inbox|dm)/i;
+
+  return (
+    emailRegex.test(value) ||
+    peruMobileRegex.test(value) ||
+    contactWordsRegex.test(text)
+  );
+}
+
 export default function SellerDashboardPage() {
   const { user, isAuthenticated } = useAuth();
   const router = useRouter();
@@ -385,6 +407,10 @@ export default function SellerDashboardPage() {
 
     if (!productDescription.trim()) {
       return 'Ingresa una descripción del producto.';
+    }
+
+    if (hasForbiddenContactInfo(productDescription)) {
+      return CONTACT_SECURITY_WARNING;
     }
 
     if (!productPrice || Number(productPrice) <= 0) {
@@ -723,12 +749,35 @@ export default function SellerDashboardPage() {
 
                 <div className="space-y-2">
                   <label className="text-sm font-medium">Descripción</label>
-                  <Input
+
+                  <textarea
                     value={productDescription}
                     onChange={(event) => setProductDescription(event.target.value)}
                     placeholder="Describe el estado, uso y detalles del producto"
+                    rows={5}
                     disabled={isSavingProduct}
+                    className="w-full resize-none rounded-md border bg-background px-3 py-2 text-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20 disabled:cursor-not-allowed disabled:opacity-50"
                   />
+
+                  <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+                    <div className="mb-1 flex items-center gap-2 font-semibold">
+                      <AlertTriangle className="h-4 w-4" />
+                      Aviso de seguridad
+                    </div>
+
+                    <p>
+                      Por seguridad, no coloques números móviles, WhatsApp,
+                      correos electrónicos ni datos de contacto. Todo aviso que
+                      intente compartir contacto externo será eliminado.
+                    </p>
+                  </div>
+
+                  {hasForbiddenContactInfo(productDescription) && (
+                    <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+                      Se detectó posible información de contacto. Elimina números
+                      móviles, correos o referencias a WhatsApp para poder publicar.
+                    </div>
+                  )}
                 </div>
 
                 <div className="grid gap-4 md:grid-cols-3">
