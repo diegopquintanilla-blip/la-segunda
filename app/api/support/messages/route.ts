@@ -36,6 +36,10 @@ function escapeHtml(value: string) {
     .replaceAll("'", '&#039;');
 }
 
+function isValidEmail(value: string) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+}
+
 function getBotReply(category: string) {
   const replies: Record<string, string> = {
     membresia:
@@ -67,6 +71,7 @@ async function sendSupportAlertEmail(params: {
   resendApiKey: string;
   subject: string;
   html: string;
+  replyTo?: string;
 }) {
   const response = await fetch('https://api.resend.com/emails', {
     method: 'POST',
@@ -79,6 +84,7 @@ async function sendSupportAlertEmail(params: {
       to: [params.to],
       subject: params.subject,
       html: params.html,
+      ...(params.replyTo ? { reply_to: params.replyTo } : {}),
     }),
   });
 
@@ -180,6 +186,7 @@ export async function POST(request: NextRequest) {
 
     const botReply = getBotReply(category);
     const priority = getPriority(category);
+    const replyToEmail = isValidEmail(userEmail) ? userEmail : undefined;
 
     const { data: savedMessage, error: insertError } = await supabaseAdmin
       .from('support_messages')
@@ -211,6 +218,21 @@ export async function POST(request: NextRequest) {
 
     if (resendApiKey) {
       try {
+        const replyButton = replyToEmail
+          ? `
+            <p style="margin-top: 24px;">
+              <a
+                href="mailto:${escapeHtml(replyToEmail)}?subject=${encodeURIComponent(
+                  `Respuesta soporte La Segunda: ${subject}`
+                )}"
+                style="display:inline-block;background:#1e3a8a;color:white;padding:12px 18px;border-radius:10px;text-decoration:none;font-weight:bold;"
+              >
+                Responder al cliente
+              </a>
+            </p>
+          `
+          : '';
+
         const html = `
           <div style="font-family: Arial, sans-serif; line-height: 1.5; color: #111827;">
             <h2>Nuevo mensaje de soporte - La Segunda Market</h2>
@@ -226,6 +248,8 @@ export async function POST(request: NextRequest) {
             <p><strong>Email:</strong> ${escapeHtml(userEmail || 'No indicado')}</p>
             <p><strong>User ID:</strong> ${escapeHtml(authUserId || 'No autenticado')}</p>
 
+            ${replyButton}
+
             <hr />
 
             <p><strong>Mensaje:</strong></p>
@@ -239,6 +263,10 @@ export async function POST(request: NextRequest) {
             <p style="margin-top: 24px; color: #6b7280;">
               Revisa Supabase → support_messages_monitor_admin para monitorear este caso.
             </p>
+
+            <p style="margin-top: 10px; color: #6b7280;">
+              También puedes responder directamente este correo. El destinatario será el email del cliente si fue proporcionado correctamente.
+            </p>
           </div>
         `;
 
@@ -248,6 +276,7 @@ export async function POST(request: NextRequest) {
           resendApiKey,
           subject: `Soporte La Segunda: ${subject}`,
           html,
+          replyTo: replyToEmail,
         });
 
         emailSent = true;
