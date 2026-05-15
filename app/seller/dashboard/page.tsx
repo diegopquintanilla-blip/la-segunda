@@ -22,6 +22,11 @@ import {
   type ProductFormInput,
 } from '@/lib/supabase/products';
 import {
+  DEFAULT_FREE_MEMBERSHIP,
+  getMyMembershipOrCreateFree,
+  type NormalizedMembership,
+} from '@/lib/supabase/memberships';
+import {
   BarChart,
   Bar,
   XAxis,
@@ -88,30 +93,6 @@ type PlanConfig = {
   badgeClass: string;
 };
 
-const PLAN_CONFIG: Record<PlanType, PlanConfig> = {
-  free: {
-    name: 'Plan Gratis',
-    limit: 3,
-    commissionRate: 8,
-    price: 'S/ 0',
-    badgeClass: 'bg-slate-100 text-slate-800',
-  },
-  plus: {
-    name: 'La Segunda Plus',
-    limit: 5,
-    commissionRate: 5,
-    price: 'S/ 19.90/mes',
-    badgeClass: 'bg-blue-100 text-blue-800',
-  },
-  premium: {
-    name: 'La Segunda Premium',
-    limit: Infinity,
-    commissionRate: 2,
-    price: 'S/ 49.90/mes',
-    badgeClass: 'bg-amber-100 text-amber-800',
-  },
-};
-
 const CONTACT_SECURITY_WARNING =
   'Por seguridad, está prohibido colocar números móviles, WhatsApp, correos electrónicos o datos de contacto en la descripción. Todo aviso que intente compartir contacto externo será eliminado.';
 
@@ -134,6 +115,36 @@ function hasForbiddenContactInfo(value: string) {
   );
 }
 
+function getPlanBadgeClass(planId: PlanType) {
+  if (planId === 'premium') {
+    return 'bg-amber-100 text-amber-800';
+  }
+
+  if (planId === 'plus') {
+    return 'bg-blue-100 text-blue-800';
+  }
+
+  return 'bg-slate-100 text-slate-800';
+}
+
+function getPlanPriceLabel(membership: NormalizedMembership) {
+  if (membership.price <= 0) {
+    return 'S/ 0';
+  }
+
+  return `S/ ${membership.price.toFixed(2)}/mes`;
+}
+
+function buildPlanConfig(membership: NormalizedMembership): PlanConfig {
+  return {
+    name: membership.planName,
+    limit: membership.hasUnlimitedPosts ? Infinity : membership.listingLimit,
+    commissionRate: membership.commissionRate,
+    price: getPlanPriceLabel(membership),
+    badgeClass: getPlanBadgeClass(membership.planId),
+  };
+}
+
 export default function SellerDashboardPage() {
   const { user, isAuthenticated } = useAuth();
   const router = useRouter();
@@ -142,7 +153,12 @@ export default function SellerDashboardPage() {
   const [isProductsLoading, setIsProductsLoading] = useState(true);
   const [isSavingProduct, setIsSavingProduct] = useState(false);
   const [pageError, setPageError] = useState('');
-  const [pageSuccess, setPageSuccess] = useState('');
+  const [pageSuccess, setPageSuccess] = '';
+
+  const [membership, setMembership] = useState<NormalizedMembership>(
+    DEFAULT_FREE_MEMBERSHIP
+  );
+  const [isMembershipLoading, setIsMembershipLoading] = useState(true);
 
   const [showForm, setShowForm] = useState(false);
   const [formError, setFormError] = useState('');
@@ -185,9 +201,24 @@ export default function SellerDashboardPage() {
     }
   };
 
+  const loadMembership = async () => {
+    setIsMembershipLoading(true);
+
+    try {
+      const realMembership = await getMyMembershipOrCreateFree();
+      setMembership(realMembership);
+    } catch (error: any) {
+      console.error('No se pudo cargar la membresía:', error?.message);
+      setMembership(DEFAULT_FREE_MEMBERSHIP);
+    } finally {
+      setIsMembershipLoading(false);
+    }
+  };
+
   useEffect(() => {
     if (isAuthenticated && user) {
       loadSellerProducts();
+      loadMembership();
     }
   }, [isAuthenticated, user]);
 
@@ -195,36 +226,17 @@ export default function SellerDashboardPage() {
     return null;
   }
 
-  const currentUser = user as any;
-
-  const getCurrentPlan = (): PlanType => {
-    const rawPlan = String(
-      currentUser.membershipType ||
-        currentUser.membership ||
-        currentUser.plan ||
-        currentUser.sellerBadge ||
-        'free'
-    ).toLowerCase();
-
-    if (rawPlan.includes('premium') || rawPlan.includes('elite')) {
-      return 'premium';
-    }
-
-    if (rawPlan.includes('plus')) {
-      return 'plus';
-    }
-
-    return 'free';
-  };
-
-  const currentPlanType = getCurrentPlan();
-  const currentPlan = PLAN_CONFIG[currentPlanType];
+  const currentPlanType = membership.planId;
+  const currentPlan = buildPlanConfig(membership);
 
   const isVerified = user.verificationStatus === 'verified';
 
-  const postingLimit = isVerified
-    ? currentPlan.limit
-    : Math.min(currentPlan.limit, 2);
+  const postingLimit =
+    currentPlanType === 'free'
+      ? isVerified
+        ? currentPlan.limit
+        : Math.min(currentPlan.limit, 2)
+      : currentPlan.limit;
 
   const publishedCount = sellerProducts.length;
   const hasUnlimitedPosts = postingLimit === Infinity;
@@ -471,6 +483,7 @@ export default function SellerDashboardPage() {
       }
 
       await loadSellerProducts();
+      await loadMembership();
 
       setShowForm(false);
       resetForm();
@@ -553,7 +566,13 @@ export default function SellerDashboardPage() {
           </div>
 
           <div className="flex flex-col gap-2 sm:flex-row">
-            <Button variant="outline" onClick={loadSellerProducts}>
+            <Button
+              variant="outline"
+              onClick={() => {
+                loadSellerProducts();
+                loadMembership();
+              }}
+            >
               <RefreshCw className="mr-2 h-4 w-4" />
               Actualizar
             </Button>
@@ -595,13 +614,19 @@ export default function SellerDashboardPage() {
                   Control de publicaciones
                 </CardTitle>
                 <CardDescription>
-                  Tu capacidad para publicar depende de tu plan y verificación de identidad.
+                  Tu capacidad para publicar depende de tu membresía real registrada en Supabase.
                 </CardDescription>
               </div>
 
-              <Badge className={currentPlan.badgeClass}>
-                {currentPlan.name}
-              </Badge>
+              <div className="flex flex-wrap gap-2">
+                <Badge className={currentPlan.badgeClass}>
+                  {isMembershipLoading ? 'Cargando plan...' : currentPlan.name}
+                </Badge>
+
+                <Badge variant="outline">
+                  Supabase
+                </Badge>
+              </div>
             </div>
           </CardHeader>
 
@@ -609,7 +634,9 @@ export default function SellerDashboardPage() {
             <div className="mb-5 grid gap-4 md:grid-cols-4">
               <div className="rounded-xl bg-slate-100 p-4">
                 <p className="text-sm text-muted-foreground">Plan actual</p>
-                <p className="text-xl font-bold">{currentPlan.name}</p>
+                <p className="text-xl font-bold">
+                  {isMembershipLoading ? 'Cargando...' : currentPlan.name}
+                </p>
                 <p className="text-sm text-muted-foreground">{currentPlan.price}</p>
               </div>
 
@@ -653,14 +680,14 @@ export default function SellerDashboardPage() {
               </div>
             )}
 
-            {!isVerified && (
+            {currentPlanType === 'free' && !isVerified && (
               <div className="mb-5 rounded-xl border border-yellow-200 bg-yellow-50 p-4 text-sm text-yellow-800">
                 <div className="mb-1 flex items-center gap-2 font-semibold">
                   <AlertTriangle className="h-4 w-4" />
                   Verificación pendiente
                 </div>
-                Los usuarios no verificados solo pueden publicar hasta 2 artículos.
-                Verifica tu identidad para desbloquear más publicaciones.
+                Los usuarios no verificados con Plan Gratis solo pueden publicar hasta 2 artículos.
+                Los planes Plus y Premium usan el límite completo de su membresía.
               </div>
             )}
 
@@ -1055,7 +1082,7 @@ export default function SellerDashboardPage() {
           <Card>
             <CardHeader>
               <CardTitle>Plan actual</CardTitle>
-              <CardDescription>Administra tu membresía</CardDescription>
+              <CardDescription>Membresía real registrada en Supabase.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="flex items-center justify-between gap-4">
