@@ -11,58 +11,132 @@ import {
   CardTitle,
 } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Input } from '@/components/ui/input';
 import {
-  Check,
-  X,
-  Crown,
-  Zap,
-  ShieldCheck,
-  PackagePlus,
   ArrowLeft,
+  Check,
+  CreditCard,
+  Crown,
   Loader2,
+  Lock,
+  PackagePlus,
+  ShieldCheck,
   Star,
   TrendingUp,
-  CreditCard,
-  Lock,
-  XCircle,
+  X,
+  Zap,
 } from 'lucide-react';
 import Link from 'next/link';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import {
+  DEFAULT_FREE_MEMBERSHIP,
+  getMyMembershipOrCreateFree,
+  listMembershipPlans,
+  type MembershipPlan,
+  type MembershipPlanId,
+  type NormalizedMembership,
+} from '@/lib/supabase/memberships';
 
-type PlanId = 'free' | 'plus' | 'premium';
-
-type MembershipPlan = {
-  id: PlanId;
-  name: string;
-  subtitle: string;
-  price: string;
-  monthlyPrice: number;
-  commissionRate: number;
-  listingLimit: number;
-  listingText: string;
-  badge: string;
-  badgeClass: string;
-  icon: React.ReactNode;
-  recommended?: boolean;
+type PlanFeatureSet = {
   features: string[];
   unavailableFeatures: string[];
 };
 
-const membershipPlans: MembershipPlan[] = [
-  {
-    id: 'free',
-    name: 'Plan Gratis',
-    subtitle: 'Ideal para empezar a vender',
-    price: 'S/ 0',
-    monthlyPrice: 0,
-    commissionRate: 8,
-    listingLimit: 3,
-    listingText: 'Hasta 3 publicaciones',
-    badge: 'Básico',
-    badgeClass: 'bg-slate-100 text-slate-800',
-    icon: <PackagePlus className="h-6 w-6" />,
+function formatPrice(price: number) {
+  if (price <= 0) {
+    return 'S/ 0';
+  }
+
+  return `S/ ${Number(price).toFixed(2)}`;
+}
+
+function getListingText(plan: MembershipPlan) {
+  if (plan.listing_limit === null) {
+    return 'Publicaciones ilimitadas';
+  }
+
+  return `Hasta ${plan.listing_limit} publicaciones`;
+}
+
+function getBadge(planId: MembershipPlanId) {
+  if (planId === 'premium') {
+    return {
+      label: 'Premium',
+      className: 'bg-amber-100 text-amber-800',
+    };
+  }
+
+  if (planId === 'plus') {
+    return {
+      label: 'Recomendado',
+      className: 'bg-blue-100 text-blue-800',
+    };
+  }
+
+  return {
+    label: 'Básico',
+    className: 'bg-slate-100 text-slate-800',
+  };
+}
+
+function getPlanIcon(planId: MembershipPlanId) {
+  if (planId === 'premium') {
+    return <Crown className="h-6 w-6" />;
+  }
+
+  if (planId === 'plus') {
+    return <Zap className="h-6 w-6" />;
+  }
+
+  return <PackagePlus className="h-6 w-6" />;
+}
+
+function getPlanSubtitle(planId: MembershipPlanId) {
+  if (planId === 'premium') {
+    return 'Para vendedores con alto volumen';
+  }
+
+  if (planId === 'plus') {
+    return 'Para vendedores frecuentes';
+  }
+
+  return 'Ideal para empezar a vender';
+}
+
+function getPlanFeatures(planId: MembershipPlanId): PlanFeatureSet {
+  if (planId === 'premium') {
+    return {
+      features: [
+        'Publicaciones ilimitadas',
+        'Comisión reducida al 2%',
+        'Productos destacados en portada',
+        'Badge Tienda Premium',
+        'Prioridad máxima en búsquedas',
+        'Panel avanzado de ventas',
+        'Chat interno protegido',
+      ],
+      unavailableFeatures: [],
+    };
+  }
+
+  if (planId === 'plus') {
+    return {
+      features: [
+        'Hasta 5 publicaciones activas',
+        'Comisión reducida al 5%',
+        'Mayor visibilidad en búsquedas',
+        'Badge de vendedor Plus',
+        'Estadísticas básicas',
+        'Chat interno protegido',
+      ],
+      unavailableFeatures: [
+        'Publicaciones ilimitadas',
+        'Productos en portada principal',
+      ],
+    };
+  }
+
+  return {
     features: [
       'Hasta 3 publicaciones si estás verificado',
       'Hasta 2 publicaciones si no estás verificado',
@@ -75,76 +149,36 @@ const membershipPlans: MembershipPlan[] = [
       'Productos destacados',
       'Panel avanzado de ventas',
     ],
-  },
-  {
-    id: 'plus',
-    name: 'La Segunda Plus',
-    subtitle: 'Para vendedores frecuentes',
-    price: 'S/ 19.90',
-    monthlyPrice: 19.9,
-    commissionRate: 5,
-    listingLimit: 5,
-    listingText: 'Hasta 5 publicaciones',
-    badge: 'Más vendido',
-    badgeClass: 'bg-blue-100 text-blue-800',
-    icon: <Zap className="h-6 w-6" />,
-    recommended: true,
-    features: [
-      'Hasta 5 publicaciones activas',
-      'Comisión reducida al 5%',
-      'Mayor visibilidad en búsquedas',
-      'Badge de vendedor Plus',
-      'Más oportunidades de venta',
-      'Chat interno protegido',
-      'Estadísticas básicas',
-    ],
-    unavailableFeatures: [
-      'Publicaciones ilimitadas',
-      'Productos en portada principal',
-    ],
-  },
-  {
-    id: 'premium',
-    name: 'La Segunda Premium',
-    subtitle: 'Para vender sin límites',
-    price: 'S/ 49.90',
-    monthlyPrice: 49.9,
-    commissionRate: 2,
-    listingLimit: Infinity,
-    listingText: 'Publicaciones ilimitadas',
-    badge: 'Premium',
-    badgeClass: 'bg-amber-100 text-amber-800',
-    icon: <Crown className="h-6 w-6" />,
-    features: [
-      'Publicaciones ilimitadas',
-      'Comisión reducida al 2%',
-      'Productos destacados en portada',
-      'Badge Tienda Premium',
-      'Prioridad máxima en búsquedas',
-      'Panel avanzado de ventas',
-      'Mayor exposición comercial',
-      'Chat interno protegido',
-    ],
-    unavailableFeatures: [],
-  },
-];
+  };
+}
+
+function getButtonLabel(plan: MembershipPlan, currentPlanId: MembershipPlanId) {
+  if (plan.id === currentPlanId) {
+    return 'Plan actual';
+  }
+
+  if (plan.id === 'free') {
+    return 'Gestionar cambio';
+  }
+
+  return 'Continuar con Mercado Pago';
+}
 
 export default function MembershipPage() {
-  const { user, isAuthenticated, updateUser } = useAuth();
+  const { user, isAuthenticated } = useAuth();
   const router = useRouter();
 
-  const [isLoading, setIsLoading] = useState<PlanId | null>(null);
+  const [plans, setPlans] = useState<MembershipPlan[]>([]);
+  const [membership, setMembership] = useState<NormalizedMembership>(
+    DEFAULT_FREE_MEMBERSHIP
+  );
+
+  const [isPageLoading, setIsPageLoading] = useState(true);
+  const [isPaymentLoading, setIsPaymentLoading] =
+    useState<MembershipPlanId | null>(null);
+
   const [successMessage, setSuccessMessage] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
-
-  const [selectedPlan, setSelectedPlan] = useState<MembershipPlan | null>(null);
-  const [showPaymentModal, setShowPaymentModal] = useState(false);
-
-  const [cardName, setCardName] = useState('');
-  const [cardNumber, setCardNumber] = useState('');
-  const [cardExpiry, setCardExpiry] = useState('');
-  const [cardCvv, setCardCvv] = useState('');
-  const [paymentError, setPaymentError] = useState('');
 
   useEffect(() => {
     if (!isAuthenticated || !user) {
@@ -152,177 +186,40 @@ export default function MembershipPage() {
     }
   }, [isAuthenticated, user, router]);
 
-  if (!isAuthenticated || !user) {
-    return null;
-  }
-
-  const currentUser = user as any;
-
-  const getCurrentPlanId = (): PlanId => {
-    const rawPlan = String(
-      currentUser.membershipType ||
-        currentUser.membership ||
-        currentUser.plan ||
-        currentUser.sellerBadge ||
-        'free'
-    ).toLowerCase();
-
-    if (rawPlan.includes('premium') || rawPlan.includes('elite')) {
-      return 'premium';
-    }
-
-    if (rawPlan.includes('plus')) {
-      return 'plus';
-    }
-
-    return 'free';
-  };
-
-  const currentPlanId = getCurrentPlanId();
-
-  const saveUserInLocalStorage = (updates: Record<string, any>) => {
-    if (typeof window === 'undefined') return;
-
-    const possibleUserKeys = [
-      'currentUser',
-      'la-segunda-user',
-      'la_segunda_user',
-      'auth-user',
-    ];
-
-    let saved = false;
-
-    possibleUserKeys.forEach((key) => {
-      const rawValue = localStorage.getItem(key);
-
-      if (!rawValue) return;
-
-      try {
-        const parsedUser = JSON.parse(rawValue);
-        const updatedUser = {
-          ...parsedUser,
-          ...updates,
-        };
-
-        localStorage.setItem(key, JSON.stringify(updatedUser));
-        saved = true;
-      } catch {
-        console.warn(`No se pudo actualizar el usuario en localStorage: ${key}`);
-      }
-    });
-
-    if (!saved) {
-      localStorage.setItem(
-        'currentUser',
-        JSON.stringify({
-          ...currentUser,
-          ...updates,
-        })
-      );
-    }
-  };
-
-  const resetPaymentForm = () => {
-    setCardName('');
-    setCardNumber('');
-    setCardExpiry('');
-    setCardCvv('');
-    setPaymentError('');
-  };
-
-  const formatCardNumber = (value: string) => {
-    const numbersOnly = value.replace(/\D/g, '').slice(0, 16);
-    return numbersOnly.replace(/(.{4})/g, '$1 ').trim();
-  };
-
-  const formatExpiry = (value: string) => {
-    const numbersOnly = value.replace(/\D/g, '').slice(0, 4);
-
-    if (numbersOnly.length <= 2) {
-      return numbersOnly;
-    }
-
-    return `${numbersOnly.slice(0, 2)}/${numbersOnly.slice(2)}`;
-  };
-
-  const validatePaymentForm = () => {
-    const cleanCardNumber = cardNumber.replace(/\s/g, '');
-
-    if (!cardName.trim()) {
-      return 'Ingresa el nombre del titular de la tarjeta.';
-    }
-
-    if (cleanCardNumber.length < 16) {
-      return 'Ingresa un número de tarjeta válido de 16 dígitos.';
-    }
-
-    if (!cardExpiry || cardExpiry.length < 5) {
-      return 'Ingresa la fecha de vencimiento en formato MM/AA.';
-    }
-
-    if (!cardCvv || cardCvv.length < 3) {
-      return 'Ingresa un CVV válido.';
-    }
-
-    return '';
-  };
-
-  const activatePlan = async (plan: MembershipPlan) => {
+  const loadMembershipData = async () => {
+    setIsPageLoading(true);
     setErrorMessage('');
-    setSuccessMessage('');
-    setIsLoading(plan.id);
 
     try {
-      const updates = {
-        membershipType: plan.id,
-        membership: plan.id,
-        plan: plan.id,
-        sellerBadge:
-          plan.id === 'free'
-            ? 'standard'
-            : plan.id === 'plus'
-              ? 'plus'
-              : 'premium',
-        isSeller: true,
-        accountType:
-          currentUser.accountType === 'buyer' ||
-          currentUser.accountType === 'comprador'
-            ? 'both'
-            : currentUser.accountType || 'both',
-        verificationStatus:
-          plan.id === 'free'
-            ? currentUser.verificationStatus || 'pending'
-            : 'verified',
-        subscriptionStatus: plan.id === 'free' ? 'free' : 'active',
-        subscriptionStartedAt: new Date().toISOString(),
-        commissionRate: plan.commissionRate,
-        monthlyListingLimit: plan.listingLimit,
-      };
+      const [supabasePlans, realMembership] = await Promise.all([
+        listMembershipPlans(),
+        getMyMembershipOrCreateFree(),
+      ]);
 
-      await new Promise((resolve) => setTimeout(resolve, 900));
-
-      updateUser(updates as any);
-      saveUserInLocalStorage(updates);
-
-      setSuccessMessage(
-        plan.id === 'free'
-          ? 'Plan Gratis activado correctamente.'
-          : `Pago aprobado. ${plan.name} activado correctamente. Redirigiendo al panel...`
+      setPlans(supabasePlans);
+      setMembership(realMembership);
+    } catch (error: any) {
+      setErrorMessage(
+        error?.message || 'No se pudieron cargar las membresías desde Supabase.'
       );
-
-      setShowPaymentModal(false);
-      setSelectedPlan(null);
-      resetPaymentForm();
-
-      setTimeout(() => {
-        router.push('/seller/dashboard');
-      }, 1200);
-    } catch {
-      setErrorMessage('Ocurrió un error al activar la membresía.');
+      setPlans([]);
+      setMembership(DEFAULT_FREE_MEMBERSHIP);
     } finally {
-      setIsLoading(null);
+      setIsPageLoading(false);
     }
   };
+
+  useEffect(() => {
+    if (isAuthenticated && user) {
+      loadMembershipData();
+    }
+  }, [isAuthenticated, user]);
+
+  const currentPlanId = membership.planId;
+
+  const orderedPlans = useMemo(() => {
+    return [...plans].sort((a, b) => a.sort_order - b.sort_order);
+  }, [plans]);
 
   const handlePlanClick = async (plan: MembershipPlan) => {
     setErrorMessage('');
@@ -333,44 +230,62 @@ export default function MembershipPage() {
     }
 
     if (plan.id === 'free') {
-      await activatePlan(plan);
+      setErrorMessage(
+        'El Plan Gratis se asigna automáticamente. Para bajar de plan, debes gestionarlo desde administración o soporte.'
+      );
       return;
     }
 
-    setSelectedPlan(plan);
-    setShowPaymentModal(true);
-  };
+    setIsPaymentLoading(plan.id);
 
-  const handlePaymentSubmit = async (event: React.FormEvent) => {
-    event.preventDefault();
-    setPaymentError('');
+    try {
+      const response = await fetch('/api/payments/create-membership', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          planId: plan.id,
+        }),
+      });
 
-    if (!selectedPlan) {
-      setPaymentError('No se seleccionó ningún plan.');
-      return;
+      const data = await response.json().catch(() => null);
+
+      if (!response.ok) {
+        throw new Error(
+          data?.error ||
+            'Todavía falta conectar la ruta segura de Mercado Pago.'
+        );
+      }
+
+      const paymentUrl = data?.initPoint || data?.url || data?.paymentUrl;
+
+      if (!paymentUrl) {
+        throw new Error(
+          'Mercado Pago no devolvió una URL de pago válida.'
+        );
+      }
+
+      window.location.href = paymentUrl;
+    } catch (error: any) {
+      setErrorMessage(
+        error?.message ||
+          'No se pudo iniciar el pago. Revisa la integración con Mercado Pago.'
+      );
+    } finally {
+      setIsPaymentLoading(null);
     }
-
-    const validationError = validatePaymentForm();
-
-    if (validationError) {
-      setPaymentError(validationError);
-      return;
-    }
-
-    await activatePlan(selectedPlan);
   };
 
-  const getButtonLabel = (plan: MembershipPlan) => {
-    if (currentPlanId === plan.id) return 'Plan actual';
-    if (plan.id === 'free') return 'Cambiar a plan gratis';
-    return 'Activar plan ahora';
-  };
+  if (!isAuthenticated || !user) {
+    return null;
+  }
 
   return (
     <div className="min-h-screen bg-slate-50">
       <Header />
 
-      <div className="container mx-auto px-4 py-10">
+      <main className="container mx-auto px-4 py-10">
         <div className="mb-8">
           <Link href="/seller/dashboard">
             <Button variant="outline" size="sm">
@@ -380,9 +295,9 @@ export default function MembershipPage() {
           </Link>
         </div>
 
-        <div className="mx-auto mb-10 max-w-4xl text-center">
-          <Badge className="mb-4 bg-amber-100 text-amber-800">
-            Pago simulado para MVP
+        <section className="mx-auto mb-10 max-w-4xl text-center">
+          <Badge className="mb-4 bg-blue-100 text-blue-800">
+            Membresías reales desde Supabase
           </Badge>
 
           <h1 className="mb-4 text-4xl font-bold md:text-5xl">
@@ -390,10 +305,10 @@ export default function MembershipPage() {
           </h1>
 
           <p className="mx-auto max-w-2xl text-lg text-muted-foreground">
-            Desbloquea más publicaciones, reduce tus comisiones y vende más en
-            La Segunda.
+            Elige el plan adecuado para publicar más productos, reducir comisiones
+            y vender con mayor visibilidad en La Segunda.
           </p>
-        </div>
+        </section>
 
         {successMessage && (
           <div className="mx-auto mb-6 max-w-5xl rounded-xl border border-green-200 bg-green-50 p-4 text-sm font-medium text-green-800">
@@ -410,118 +325,183 @@ export default function MembershipPage() {
           </div>
         )}
 
-        <div className="mx-auto grid max-w-6xl gap-6 md:grid-cols-3">
-          {membershipPlans.map((plan) => {
-            const isCurrentPlan = currentPlanId === plan.id;
-            const isActivating = isLoading === plan.id;
+        <Card className="mx-auto mb-8 max-w-5xl border-blue-200 bg-blue-50">
+          <CardContent className="flex flex-col gap-4 p-6 md:flex-row md:items-center md:justify-between">
+            <div>
+              <h2 className="text-lg font-bold text-blue-950">
+                Plan actual
+              </h2>
 
-            return (
-              <Card
-                key={plan.id}
-                className={`relative overflow-hidden ${
-                  plan.recommended
-                    ? 'border-primary shadow-lg ring-2 ring-primary md:scale-105'
-                    : 'border-border shadow-sm'
-                }`}
-              >
-                {plan.recommended && (
-                  <div className="absolute left-1/2 top-0 -translate-x-1/2 rounded-b-xl bg-primary px-4 py-1 text-xs font-semibold text-primary-foreground">
-                    Recomendado
-                  </div>
-                )}
+              <p className="mt-1 text-sm text-blue-800">
+                Tu membresía se consulta desde Supabase, no desde localStorage.
+              </p>
+            </div>
 
-                <CardHeader className={plan.recommended ? 'pt-10' : ''}>
-                  <div className="mb-4 flex items-center justify-between">
-                    <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-primary/10 text-primary">
-                      {plan.icon}
+            <div className="flex flex-wrap items-center gap-3">
+              <Badge className={getBadge(currentPlanId).className}>
+                {membership.planName}
+              </Badge>
+
+              <Badge variant="outline">
+                Estado: {membership.status}
+              </Badge>
+
+              <Badge variant="outline">
+                Comisión: {membership.commissionRate}%
+              </Badge>
+            </div>
+          </CardContent>
+        </Card>
+
+        {isPageLoading ? (
+          <div className="mx-auto max-w-5xl rounded-2xl border bg-white p-12 text-center shadow-sm">
+            <Loader2 className="mx-auto mb-4 h-10 w-10 animate-spin text-primary" />
+            <h2 className="text-xl font-bold">Cargando membresías...</h2>
+            <p className="mt-2 text-sm text-muted-foreground">
+              Obteniendo planes desde Supabase.
+            </p>
+          </div>
+        ) : (
+          <section className="mx-auto grid max-w-6xl gap-6 md:grid-cols-3">
+            {orderedPlans.map((plan) => {
+              const badge = getBadge(plan.id);
+              const isCurrentPlan = currentPlanId === plan.id;
+              const isRecommended = plan.id === 'plus';
+              const isPremium = plan.id === 'premium';
+              const isLoading = isPaymentLoading === plan.id;
+              const { features, unavailableFeatures } = getPlanFeatures(plan.id);
+
+              return (
+                <Card
+                  key={plan.id}
+                  className={`relative overflow-hidden ${
+                    isRecommended
+                      ? 'border-primary shadow-lg ring-2 ring-primary md:scale-105'
+                      : 'border-border shadow-sm'
+                  }`}
+                >
+                  {isRecommended && (
+                    <div className="absolute left-1/2 top-0 -translate-x-1/2 rounded-b-xl bg-primary px-4 py-1 text-xs font-semibold text-primary-foreground">
+                      Recomendado
                     </div>
+                  )}
 
-                    <Badge className={plan.badgeClass}>{plan.badge}</Badge>
-                  </div>
-
-                  <CardTitle className="text-2xl">{plan.name}</CardTitle>
-
-                  <CardDescription>{plan.subtitle}</CardDescription>
-
-                  <div className="pt-4">
-                    <span className="text-4xl font-bold text-primary">
-                      {plan.price}
-                    </span>
-
-                    {plan.monthlyPrice > 0 && (
-                      <span className="text-sm text-muted-foreground"> / mes</span>
-                    )}
-                  </div>
-                </CardHeader>
-
-                <CardContent className="space-y-6">
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className="rounded-xl bg-slate-100 p-3">
-                      <p className="text-xs text-muted-foreground">Publicaciones</p>
-                      <p className="font-bold">{plan.listingText}</p>
-                    </div>
-
-                    <div className="rounded-xl bg-slate-100 p-3">
-                      <p className="text-xs text-muted-foreground">Comisión</p>
-                      <p className="font-bold">{plan.commissionRate}%</p>
-                    </div>
-                  </div>
-
-                  <div className="space-y-3">
-                    {plan.features.map((feature) => (
-                      <div key={feature} className="flex items-start gap-2 text-sm">
-                        <Check className="mt-0.5 h-4 w-4 flex-shrink-0 text-green-600" />
-                        <span>{feature}</span>
+                  <CardHeader className={isRecommended ? 'pt-10' : ''}>
+                    <div className="mb-4 flex items-center justify-between">
+                      <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-primary/10 text-primary">
+                        {getPlanIcon(plan.id)}
                       </div>
-                    ))}
 
-                    {plan.unavailableFeatures.map((feature) => (
-                      <div
-                        key={feature}
-                        className="flex items-start gap-2 text-sm text-muted-foreground"
-                      >
-                        <X className="mt-0.5 h-4 w-4 flex-shrink-0" />
-                        <span>{feature}</span>
+                      <Badge className={badge.className}>
+                        {badge.label}
+                      </Badge>
+                    </div>
+
+                    <CardTitle className="text-2xl">
+                      {plan.name}
+                    </CardTitle>
+
+                    <CardDescription>
+                      {plan.description || getPlanSubtitle(plan.id)}
+                    </CardDescription>
+
+                    <div className="pt-4">
+                      <span className="text-4xl font-bold text-primary">
+                        {formatPrice(Number(plan.price))}
+                      </span>
+
+                      {Number(plan.price) > 0 && (
+                        <span className="text-sm text-muted-foreground">
+                          {' '}
+                          / mes
+                        </span>
+                      )}
+                    </div>
+                  </CardHeader>
+
+                  <CardContent className="space-y-6">
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="rounded-xl bg-slate-100 p-3">
+                        <p className="text-xs text-muted-foreground">
+                          Publicaciones
+                        </p>
+
+                        <p className="font-bold">
+                          {getListingText(plan)}
+                        </p>
                       </div>
-                    ))}
-                  </div>
 
-                  <Button
-                    className={`w-full ${
-                      plan.id === 'premium'
-                        ? 'bg-amber-600 hover:bg-amber-700'
-                        : ''
-                    }`}
-                    variant={plan.id === 'free' ? 'outline' : 'default'}
-                    disabled={isCurrentPlan || isLoading !== null}
-                    onClick={() => handlePlanClick(plan)}
-                  >
-                    {isActivating ? (
-                      <>
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        Procesando...
-                      </>
-                    ) : isCurrentPlan ? (
-                      'Plan actual'
-                    ) : plan.id === 'free' ? (
-                      getButtonLabel(plan)
-                    ) : (
-                      <>
-                        <CreditCard className="mr-2 h-4 w-4" />
-                        {getButtonLabel(plan)}
-                      </>
-                    )}
-                  </Button>
-                </CardContent>
-              </Card>
-            );
-          })}
-        </div>
+                      <div className="rounded-xl bg-slate-100 p-3">
+                        <p className="text-xs text-muted-foreground">
+                          Comisión
+                        </p>
 
-        <div className="mx-auto mt-14 max-w-6xl">
+                        <p className="font-bold">
+                          {Number(plan.commission_rate)}%
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="space-y-3">
+                      {features.map((feature) => (
+                        <div
+                          key={feature}
+                          className="flex items-start gap-2 text-sm"
+                        >
+                          <Check className="mt-0.5 h-4 w-4 flex-shrink-0 text-green-600" />
+                          <span>{feature}</span>
+                        </div>
+                      ))}
+
+                      {unavailableFeatures.map((feature) => (
+                        <div
+                          key={feature}
+                          className="flex items-start gap-2 text-sm text-muted-foreground"
+                        >
+                          <X className="mt-0.5 h-4 w-4 flex-shrink-0" />
+                          <span>{feature}</span>
+                        </div>
+                      ))}
+                    </div>
+
+                    <Button
+                      className={`w-full ${
+                        isPremium ? 'bg-amber-600 hover:bg-amber-700' : ''
+                      }`}
+                      variant={plan.id === 'free' ? 'outline' : 'default'}
+                      disabled={isCurrentPlan || isPaymentLoading !== null}
+                      onClick={() => handlePlanClick(plan)}
+                    >
+                      {isLoading ? (
+                        <>
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          Conectando...
+                        </>
+                      ) : isCurrentPlan ? (
+                        'Plan actual'
+                      ) : plan.id === 'free' ? (
+                        getButtonLabel(plan, currentPlanId)
+                      ) : (
+                        <>
+                          <CreditCard className="mr-2 h-4 w-4" />
+                          {getButtonLabel(plan, currentPlanId)}
+                        </>
+                      )}
+                    </Button>
+                  </CardContent>
+                </Card>
+              );
+            })}
+          </section>
+        )}
+
+        <section className="mx-auto mt-14 max-w-6xl">
           <Card>
             <CardHeader>
-              <CardTitle className="text-2xl">Comparación completa</CardTitle>
+              <CardTitle className="text-2xl">
+                Comparación completa
+              </CardTitle>
+
               <CardDescription>
                 Compara los beneficios principales de cada membresía.
               </CardDescription>
@@ -562,39 +542,54 @@ export default function MembershipPage() {
                     </tr>
 
                     <tr className="border-b">
-                      <td className="p-4 font-medium">Chat interno protegido</td>
+                      <td className="p-4 font-medium">
+                        Chat interno protegido
+                      </td>
+
                       <td className="p-4 text-center">
                         <Check className="mx-auto h-4 w-4 text-green-600" />
                       </td>
+
                       <td className="p-4 text-center">
                         <Check className="mx-auto h-4 w-4 text-green-600" />
                       </td>
+
                       <td className="p-4 text-center">
                         <Check className="mx-auto h-4 w-4 text-green-600" />
                       </td>
                     </tr>
 
                     <tr className="border-b">
-                      <td className="p-4 font-medium">Prioridad en búsqueda</td>
+                      <td className="p-4 font-medium">
+                        Prioridad en búsqueda
+                      </td>
+
                       <td className="p-4 text-center">
                         <X className="mx-auto h-4 w-4 text-muted-foreground" />
                       </td>
+
                       <td className="p-4 text-center">
                         <Check className="mx-auto h-4 w-4 text-green-600" />
                       </td>
+
                       <td className="p-4 text-center">
                         <Check className="mx-auto h-4 w-4 text-green-600" />
                       </td>
                     </tr>
 
                     <tr className="border-b">
-                      <td className="p-4 font-medium">Productos destacados</td>
+                      <td className="p-4 font-medium">
+                        Productos destacados
+                      </td>
+
                       <td className="p-4 text-center">
                         <X className="mx-auto h-4 w-4 text-muted-foreground" />
                       </td>
+
                       <td className="p-4 text-center">
                         <Check className="mx-auto h-4 w-4 text-green-600" />
                       </td>
+
                       <td className="p-4 text-center">
                         <Check className="mx-auto h-4 w-4 text-green-600" />
                       </td>
@@ -602,12 +597,15 @@ export default function MembershipPage() {
 
                     <tr>
                       <td className="p-4 font-medium">Badge de tienda</td>
+
                       <td className="p-4 text-center">
                         <X className="mx-auto h-4 w-4 text-muted-foreground" />
                       </td>
+
                       <td className="p-4 text-center">
                         <Star className="mx-auto h-4 w-4 text-blue-600" />
                       </td>
+
                       <td className="p-4 text-center">
                         <Crown className="mx-auto h-4 w-4 text-amber-600" />
                       </td>
@@ -617,182 +615,34 @@ export default function MembershipPage() {
               </div>
             </CardContent>
           </Card>
-        </div>
+        </section>
 
-        <div className="mx-auto mt-10 max-w-6xl">
-          <Card className="border-blue-200 bg-blue-50">
+        <section className="mx-auto mt-10 max-w-6xl">
+          <Card className="border-amber-200 bg-amber-50">
             <CardContent className="flex flex-col gap-4 p-6 md:flex-row md:items-center md:justify-between">
               <div>
-                <h3 className="flex items-center gap-2 text-lg font-bold text-blue-900">
-                  <TrendingUp className="h-5 w-5" />
-                  Estrategia de monetización activa
+                <h3 className="flex items-center gap-2 text-lg font-bold text-amber-900">
+                  <Lock className="h-5 w-5" />
+                  Próximo paso: Mercado Pago
                 </h3>
 
-                <p className="mt-1 text-sm text-blue-800">
-                  Cuando el vendedor supera el límite gratuito, La Segunda ofrece
-                  membresías para seguir publicando y vender más.
+                <p className="mt-1 text-sm text-amber-800">
+                  Esta página ya lee planes reales desde Supabase. La activación
+                  de Plus o Premium debe confirmarse mediante Mercado Pago y
+                  webhook antes de actualizar la membresía.
                 </p>
               </div>
 
               <Link href="/seller/dashboard">
-                <Button variant="outline">Ver mi límite actual</Button>
+                <Button variant="outline">
+                  <TrendingUp className="mr-2 h-4 w-4" />
+                  Ver mi límite actual
+                </Button>
               </Link>
             </CardContent>
           </Card>
-        </div>
-      </div>
-
-      {showPaymentModal && selectedPlan && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
-          <div className="w-full max-w-lg rounded-2xl bg-white shadow-2xl">
-            <div className="flex items-center justify-between border-b p-5">
-              <div>
-                <h2 className="text-xl font-bold">Pago de membresía</h2>
-                <p className="text-sm text-muted-foreground">
-                  Estás activando {selectedPlan.name}
-                </p>
-              </div>
-
-              <button
-                type="button"
-                onClick={() => {
-                  setShowPaymentModal(false);
-                  setSelectedPlan(null);
-                  resetPaymentForm();
-                }}
-                className="rounded-full p-2 hover:bg-slate-100"
-              >
-                <XCircle className="h-5 w-5" />
-              </button>
-            </div>
-
-            <form onSubmit={handlePaymentSubmit} className="space-y-5 p-5">
-              <div className="rounded-xl border bg-slate-50 p-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="font-semibold">{selectedPlan.name}</p>
-                    <p className="text-sm text-muted-foreground">
-                      Membresía mensual
-                    </p>
-                  </div>
-
-                  <div className="text-right">
-                    <p className="text-2xl font-bold text-primary">
-                      {selectedPlan.price}
-                    </p>
-                    <p className="text-xs text-muted-foreground">/ mes</p>
-                  </div>
-                </div>
-              </div>
-
-              <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
-                Este es un pago simulado para MVP. No se guardan datos reales de
-                tarjeta. Para producción usa Stripe, Mercado Pago o una pasarela
-                certificada.
-              </div>
-
-              {paymentError && (
-                <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">
-                  {paymentError}
-                </div>
-              )}
-
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Nombre del titular</label>
-                <Input
-                  value={cardName}
-                  onChange={(event) => setCardName(event.target.value)}
-                  placeholder="Ejemplo: Diego Palomino"
-                />
-              </div>
-
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Número de tarjeta</label>
-                <div className="relative">
-                  <CreditCard className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-                  <Input
-                    value={cardNumber}
-                    onChange={(event) =>
-                      setCardNumber(formatCardNumber(event.target.value))
-                    }
-                    placeholder="4242 4242 4242 4242"
-                    className="pl-9"
-                    inputMode="numeric"
-                    maxLength={19}
-                  />
-                </div>
-              </div>
-
-              <div className="grid gap-4 sm:grid-cols-2">
-                <div className="space-y-2">
-                  <label className="text-sm font-medium">Vencimiento</label>
-                  <Input
-                    value={cardExpiry}
-                    onChange={(event) =>
-                      setCardExpiry(formatExpiry(event.target.value))
-                    }
-                    placeholder="MM/AA"
-                    inputMode="numeric"
-                    maxLength={5}
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <label className="text-sm font-medium">CVV</label>
-                  <Input
-                    value={cardCvv}
-                    onChange={(event) =>
-                      setCardCvv(event.target.value.replace(/\D/g, '').slice(0, 4))
-                    }
-                    placeholder="123"
-                    inputMode="numeric"
-                    maxLength={4}
-                    type="password"
-                  />
-                </div>
-              </div>
-
-              <div className="flex items-center gap-2 rounded-xl bg-slate-100 p-3 text-sm text-slate-700">
-                <Lock className="h-4 w-4" />
-                Tus datos no se almacenan en este MVP.
-              </div>
-
-              <div className="flex flex-col gap-3 sm:flex-row">
-                <Button
-                  type="submit"
-                  className="w-full"
-                  disabled={isLoading !== null}
-                >
-                  {isLoading === selectedPlan.id ? (
-                    <>
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      Procesando pago...
-                    </>
-                  ) : (
-                    <>
-                      <CreditCard className="mr-2 h-4 w-4" />
-                      Pagar {selectedPlan.price}
-                    </>
-                  )}
-                </Button>
-
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="w-full"
-                  onClick={() => {
-                    setShowPaymentModal(false);
-                    setSelectedPlan(null);
-                    resetPaymentForm();
-                  }}
-                >
-                  Cancelar
-                </Button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+        </section>
+      </main>
     </div>
   );
 }
