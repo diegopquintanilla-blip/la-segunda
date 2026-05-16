@@ -29,6 +29,10 @@ function getSiteUrl() {
   ).replace(/\/$/, '');
 }
 
+function roundMoney(value: number) {
+  return Math.round(value * 100) / 100;
+}
+
 export async function POST(request: NextRequest) {
   try {
     const supabaseUrl = getRequiredEnv('NEXT_PUBLIC_SUPABASE_URL');
@@ -36,7 +40,6 @@ export async function POST(request: NextRequest) {
     const mercadoPagoAccessToken = getRequiredEnv('MERCADOPAGO_ACCESS_TOKEN');
 
     const siteUrl = getSiteUrl();
-
     const accessToken = getBearerToken(request);
 
     if (!accessToken) {
@@ -70,9 +73,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json().catch(() => null);
-
     const productId = String(body?.productId || '').trim();
-    const productTitle = String(body?.productTitle || 'Producto').trim();
 
     if (!productId) {
       return NextResponse.json(
@@ -83,7 +84,69 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const contactPrice = Number(process.env.CONTACT_SELLER_PRICE || '2.00');
+    const { data: product, error: productError } = await supabaseAdmin
+      .from('products')
+      .select('id, title, price, seller_id, status')
+      .eq('id', productId)
+      .single();
+
+    if (productError || !product) {
+      return NextResponse.json(
+        {
+          error: 'No se encontró el producto en Supabase.',
+        },
+        { status: 404 }
+      );
+    }
+
+    const productStatus = String(product.status || 'active').toLowerCase();
+
+    if (['sold', 'vendido', 'inactive', 'deleted'].includes(productStatus)) {
+      return NextResponse.json(
+        {
+          error: 'Este producto ya no está disponible para contacto.',
+        },
+        { status: 400 }
+      );
+    }
+
+    const sellerId = String(product.seller_id || '');
+
+    if (sellerId && sellerId === user.id) {
+      return NextResponse.json(
+        {
+          error: 'No puedes contactar por tu propio producto.',
+        },
+        { status: 400 }
+      );
+    }
+
+    const productTitle = String(product.title || 'Producto');
+    const productPrice = Number(product.price || 0);
+
+    if (!productPrice || productPrice <= 0) {
+      return NextResponse.json(
+        {
+          error: 'El producto no tiene un precio válido.',
+        },
+        { status: 400 }
+      );
+    }
+
+    const commissionRate = Number(
+      process.env.CONTACT_SELLER_COMMISSION_RATE || '10'
+    );
+
+    if (!Number.isFinite(commissionRate) || commissionRate <= 0) {
+      return NextResponse.json(
+        {
+          error: 'La comisión configurada no es válida.',
+        },
+        { status: 500 }
+      );
+    }
+
+    const commissionAmount = roundMoney((productPrice * commissionRate) / 100);
     const currency = process.env.CONTACT_SELLER_CURRENCY || 'PEN';
 
     const preferencePayload = {
@@ -91,11 +154,10 @@ export async function POST(request: NextRequest) {
         {
           id: `contact-${productId}`,
           title: `Contacto protegido - ${productTitle}`,
-          description:
-            'Pago para habilitar contacto protegido con el vendedor dentro de La Segunda Market.',
+          description: `Comisión del ${commissionRate}% para habilitar contacto seguro con el vendedor.`,
           quantity: 1,
           currency_id: currency,
-          unit_price: contactPrice,
+          unit_price: commissionAmount,
         },
       ],
       payer: {
@@ -106,8 +168,12 @@ export async function POST(request: NextRequest) {
         product_type: 'seller_contact',
         user_id: user.id,
         user_email: user.email,
+        seller_id: sellerId,
         product_id: productId,
         product_title: productTitle,
+        product_price: productPrice,
+        commission_rate: commissionRate,
+        commission_amount: commissionAmount,
       },
       back_urls: {
         success: `${siteUrl}/messages?contact_payment=success&productId=${productId}`,
@@ -165,6 +231,10 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       preferenceId: mercadoPagoData.id,
       initPoint,
+      productPrice,
+      commissionRate,
+      commissionAmount,
+      currency,
     });
   } catch (error: any) {
     return NextResponse.json(
