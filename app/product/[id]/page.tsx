@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { Header } from '@/components/header';
 import { useAuth } from '@/lib/auth-context';
@@ -9,11 +9,11 @@ import {
   getProductById,
   incrementProductViews,
 } from '@/lib/supabase/products';
+import { ContactSellerPaymentButton } from '@/components/product/contact-seller-payment-button';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import {
   ArrowLeft,
-  CheckCircle,
   Eye,
   Heart,
   ImageIcon,
@@ -48,19 +48,6 @@ type ProductDetail = {
   updatedAt?: string;
 };
 
-type ContactRequest = {
-  id: string;
-  productId: string;
-  productTitle: string;
-  sellerId: string;
-  buyerId: string;
-  amount: number;
-  status: 'pending_contact';
-  createdAt: string;
-};
-
-const CONTACT_REQUESTS_KEY = 'la-segunda-contact-requests';
-
 function formatPrice(value?: number) {
   return Number(value || 0).toLocaleString('es-PE', {
     minimumFractionDigits: 2,
@@ -87,28 +74,9 @@ function getSellerId(product: ProductDetail) {
   return product.sellerId || product.userId || product.ownerId || '';
 }
 
-function saveContactRequest(request: ContactRequest) {
-  if (typeof window === 'undefined') return;
-
-  try {
-    const rawRequests = localStorage.getItem(CONTACT_REQUESTS_KEY);
-    const currentRequests = rawRequests ? JSON.parse(rawRequests) : [];
-
-    const requests = Array.isArray(currentRequests) ? currentRequests : [];
-
-    localStorage.setItem(
-      CONTACT_REQUESTS_KEY,
-      JSON.stringify([request, ...requests])
-    );
-  } catch {
-    localStorage.setItem(CONTACT_REQUESTS_KEY, JSON.stringify([request]));
-  }
-}
-
 export default function ProductDetailPage() {
   const params = useParams();
-  const router = useRouter();
-  const { user, isAuthenticated } = useAuth();
+  const { user } = useAuth();
 
   const productId = String(params?.id || '');
 
@@ -116,7 +84,6 @@ export default function ProductDetailPage() {
   const [selectedImage, setSelectedImage] = useState('');
   const [isLoading, setIsLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState('');
-  const [successMessage, setSuccessMessage] = useState('');
   const [viewCount, setViewCount] = useState(0);
 
   const loadProduct = async () => {
@@ -182,47 +149,8 @@ export default function ProductDetailPage() {
     return [];
   }, [product]);
 
-  const productPrice = Number(product?.price || 0);
   const sellerId = product ? getSellerId(product) : '';
   const isOwnProduct = Boolean(user?.id && sellerId && user.id === sellerId);
-
-  const handleContactSeller = () => {
-    setErrorMessage('');
-    setSuccessMessage('');
-
-    if (!isAuthenticated || !user?.id) {
-      router.push('/auth/login');
-      return;
-    }
-
-    if (!product) return;
-
-    if (isOwnProduct) {
-      setErrorMessage('No puedes contactar por tu propio producto.');
-      return;
-    }
-
-    const request: ContactRequest = {
-      id: `contact-${Date.now()}`,
-      productId: product.id,
-      productTitle: product.title || product.name || 'Producto',
-      sellerId,
-      buyerId: user.id,
-      amount: productPrice,
-      status: 'pending_contact',
-      createdAt: new Date().toISOString(),
-    };
-
-    saveContactRequest(request);
-
-    setSuccessMessage(
-      'Solicitud registrada. Se habilitará el contacto protegido desde mensajes.'
-    );
-
-    window.setTimeout(() => {
-      router.push('/messages');
-    }, 1000);
-  };
 
   if (isLoading) {
     return (
@@ -288,15 +216,6 @@ export default function ProductDetailPage() {
             </Button>
           </Link>
         </div>
-
-        {successMessage && (
-          <div className="mb-6 rounded-xl border border-green-200 bg-green-50 p-4 text-green-700">
-            <div className="flex items-center gap-2 font-semibold">
-              <CheckCircle className="h-5 w-5" />
-              {successMessage}
-            </div>
-          </div>
-        )}
 
         {errorMessage && (
           <div className="mb-6 rounded-xl border border-red-200 bg-red-50 p-4 text-red-700">
@@ -425,20 +344,22 @@ export default function ProductDetailPage() {
                 </p>
               </div>
 
-              <Button
-                className="mt-5 w-full"
-                size="lg"
-                onClick={handleContactSeller}
-                disabled={isOwnProduct}
-              >
-                <MessageCircle className="mr-2 h-5 w-5" />
-                {isOwnProduct
-                  ? 'Este producto es tuyo'
-                  : 'Contactar vendedor'}
-              </Button>
+              <div className="mt-5">
+                {isOwnProduct ? (
+                  <Button className="w-full" size="lg" disabled>
+                    <MessageCircle className="mr-2 h-5 w-5" />
+                    Este producto es tuyo
+                  </Button>
+                ) : (
+                  <ContactSellerPaymentButton
+                    productId={product.id}
+                    productTitle={product.title || product.name || 'Producto'}
+                  />
+                )}
+              </div>
 
               <p className="mt-3 text-center text-xs text-muted-foreground">
-                Más adelante podrás integrar Mercado Pago, Culqi, Izipay o Stripe.
+                El contacto protegido se habilita mediante Mercado Pago.
               </p>
             </div>
 
