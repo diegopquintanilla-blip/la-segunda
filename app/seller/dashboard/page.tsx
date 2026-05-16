@@ -22,11 +22,6 @@ import {
   type ProductFormInput,
 } from '@/lib/supabase/products';
 import {
-  DEFAULT_FREE_MEMBERSHIP,
-  getMyMembershipOrCreateFree,
-  type NormalizedMembership,
-} from '@/lib/supabase/memberships';
-import {
   BarChart,
   Bar,
   XAxis,
@@ -43,8 +38,6 @@ import {
   Heart,
   Plus,
   MoreVertical,
-  Lock,
-  Crown,
   PackagePlus,
   AlertTriangle,
   CheckCircle,
@@ -56,12 +49,11 @@ import {
   ImageIcon,
   Loader2,
   RefreshCw,
+  ShieldCheck,
+  Percent,
 } from 'lucide-react';
-import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useEffect, useMemo, useState } from 'react';
-
-type PlanType = 'free' | 'plus' | 'premium';
 
 type ProductItem = {
   id: string;
@@ -85,22 +77,15 @@ type ProductItem = {
   updatedAt?: string;
 };
 
-type PlanConfig = {
-  name: string;
-  limit: number;
-  commissionRate: number;
-  price: string;
-  badgeClass: string;
-};
-
 const CONTACT_SECURITY_WARNING =
   'Por seguridad, está prohibido colocar números móviles, WhatsApp, correos electrónicos o datos de contacto en la descripción. Todo aviso que intente compartir contacto externo será eliminado.';
+
+const PLATFORM_COMMISSION_RATE = 10;
 
 function hasForbiddenContactInfo(value: string) {
   const text = value.toLowerCase();
 
-  const emailRegex =
-    /[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}/i;
+  const emailRegex = /[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}/i;
 
   const peruMobileRegex =
     /(?:\+?51[\s.-]*)?(?:9[\s.-]*\d[\s.-]*\d[\s.-]*\d[\s.-]*\d[\s.-]*\d[\s.-]*\d[\s.-]*\d[\s.-]*\d)/;
@@ -115,36 +100,6 @@ function hasForbiddenContactInfo(value: string) {
   );
 }
 
-function getPlanBadgeClass(planId: PlanType) {
-  if (planId === 'premium') {
-    return 'bg-amber-100 text-amber-800';
-  }
-
-  if (planId === 'plus') {
-    return 'bg-blue-100 text-blue-800';
-  }
-
-  return 'bg-slate-100 text-slate-800';
-}
-
-function getPlanPriceLabel(membership: NormalizedMembership) {
-  if (membership.price <= 0) {
-    return 'S/ 0';
-  }
-
-  return `S/ ${membership.price.toFixed(2)}/mes`;
-}
-
-function buildPlanConfig(membership: NormalizedMembership): PlanConfig {
-  return {
-    name: membership.planName,
-    limit: membership.hasUnlimitedPosts ? Infinity : membership.listingLimit,
-    commissionRate: membership.commissionRate,
-    price: getPlanPriceLabel(membership),
-    badgeClass: getPlanBadgeClass(membership.planId),
-  };
-}
-
 export default function SellerDashboardPage() {
   const { user, isAuthenticated } = useAuth();
   const router = useRouter();
@@ -154,11 +109,6 @@ export default function SellerDashboardPage() {
   const [isSavingProduct, setIsSavingProduct] = useState(false);
   const [pageError, setPageError] = useState('');
   const [pageSuccess, setPageSuccess] = useState('');
-
-  const [membership, setMembership] = useState<NormalizedMembership>(
-    DEFAULT_FREE_MEMBERSHIP
-  );
-  const [isMembershipLoading, setIsMembershipLoading] = useState(true);
 
   const [showForm, setShowForm] = useState(false);
   const [formError, setFormError] = useState('');
@@ -201,24 +151,9 @@ export default function SellerDashboardPage() {
     }
   };
 
-  const loadMembership = async () => {
-    setIsMembershipLoading(true);
-
-    try {
-      const realMembership = await getMyMembershipOrCreateFree();
-      setMembership(realMembership);
-    } catch (error: any) {
-      console.error('No se pudo cargar la membresía:', error?.message);
-      setMembership(DEFAULT_FREE_MEMBERSHIP);
-    } finally {
-      setIsMembershipLoading(false);
-    }
-  };
-
   useEffect(() => {
     if (isAuthenticated && user) {
       loadSellerProducts();
-      loadMembership();
     }
   }, [isAuthenticated, user]);
 
@@ -226,30 +161,8 @@ export default function SellerDashboardPage() {
     return null;
   }
 
-  const currentPlanType = membership.planId;
-  const currentPlan = buildPlanConfig(membership);
-
-  const isVerified = user.verificationStatus === 'verified';
-
-  const postingLimit =
-    currentPlanType === 'free'
-      ? isVerified
-        ? 3
-        : 2
-      : currentPlan.limit;
-
   const publishedCount = sellerProducts.length;
-  const hasUnlimitedPosts = postingLimit === Infinity;
-
-  const remainingPosts = hasUnlimitedPosts
-    ? Infinity
-    : Math.max(postingLimit - publishedCount, 0);
-
-  const canPublish = hasUnlimitedPosts || publishedCount < postingLimit;
-
-  const progressPercent = hasUnlimitedPosts
-    ? 100
-    : Math.min((publishedCount / postingLimit) * 100, 100);
+  const canPublish = true;
 
   const sellerOrders = mockOrders.filter((order) => order.sellerId === user.id);
 
@@ -270,7 +183,7 @@ export default function SellerDashboardPage() {
     0
   );
 
-  const commissionEarnings = (totalRevenue * currentPlan.commissionRate) / 100;
+  const commissionEarnings = (totalRevenue * PLATFORM_COMMISSION_RATE) / 100;
   const netEarnings = totalRevenue - commissionEarnings;
 
   const chartData = useMemo(() => {
@@ -413,10 +326,6 @@ export default function SellerDashboardPage() {
   };
 
   const validateProductForm = () => {
-    if (!editingProduct && !canPublish) {
-      return 'Alcanzaste el límite de publicaciones de tu plan actual.';
-    }
-
     if (!productTitle.trim()) {
       return 'Ingresa el nombre del producto.';
     }
@@ -487,7 +396,6 @@ export default function SellerDashboardPage() {
       }
 
       await loadSellerProducts();
-      await loadMembership();
 
       setShowForm(false);
       resetForm();
@@ -565,7 +473,7 @@ export default function SellerDashboardPage() {
           <div>
             <h1 className="text-3xl font-bold">Panel de publicaciones</h1>
             <p className="text-muted-foreground">
-              Publica artículos, controla tus límites y administra tus ventas.
+              Publica productos sin membresía. La comisión se cobra por contacto seguro.
             </p>
           </div>
 
@@ -573,33 +481,21 @@ export default function SellerDashboardPage() {
             <Button
               type="button"
               variant="outline"
-              onClick={() => {
-                loadSellerProducts();
-                loadMembership();
-              }}
-              disabled={isProductsLoading || isMembershipLoading}
+              onClick={loadSellerProducts}
+              disabled={isProductsLoading}
             >
               <RefreshCw className="mr-2 h-4 w-4" />
               Actualizar
             </Button>
 
-            {canPublish ? (
-              <Button
-                type="button"
-                onClick={openPublishForm}
-                disabled={isProductsLoading || isMembershipLoading || isSavingProduct}
-              >
-                <Plus className="mr-2 h-4 w-4" />
-                Publicar artículo
-              </Button>
-            ) : (
-              <Link href="/seller/membership">
-                <Button className="bg-amber-600 hover:bg-amber-700">
-                  <Crown className="mr-2 h-4 w-4" />
-                  Mejorar membresía
-                </Button>
-              </Link>
-            )}
+            <Button
+              type="button"
+              onClick={openPublishForm}
+              disabled={isProductsLoading || isSavingProduct}
+            >
+              <Plus className="mr-2 h-4 w-4" />
+              Publicar artículo
+            </Button>
           </div>
         </div>
 
@@ -624,30 +520,28 @@ export default function SellerDashboardPage() {
                   Control de publicaciones
                 </CardTitle>
                 <CardDescription>
-                  Tu capacidad para publicar depende de tu membresía real registrada en Supabase.
+                  Puedes publicar sin membresía. La Segunda Market cobra el 10% cuando un comprador paga el contacto protegido.
                 </CardDescription>
               </div>
 
               <div className="flex flex-wrap gap-2">
-                <Badge className={currentPlan.badgeClass}>
-                  {isMembershipLoading ? 'Cargando plan...' : currentPlan.name}
+                <Badge className="bg-blue-100 text-blue-800">
+                  Sin membresía
                 </Badge>
 
                 <Badge variant="outline">
-                  Supabase
+                  Comisión {PLATFORM_COMMISSION_RATE}%
                 </Badge>
               </div>
             </div>
           </CardHeader>
 
           <CardContent>
-            <div className="mb-5 grid gap-4 md:grid-cols-4">
+            <div className="grid gap-4 md:grid-cols-4">
               <div className="rounded-xl bg-slate-100 p-4">
-                <p className="text-sm text-muted-foreground">Plan actual</p>
-                <p className="text-xl font-bold">
-                  {isMembershipLoading ? 'Cargando...' : currentPlan.name}
-                </p>
-                <p className="text-sm text-muted-foreground">{currentPlan.price}</p>
+                <p className="text-sm text-muted-foreground">Modelo actual</p>
+                <p className="text-xl font-bold">Comisión por contacto</p>
+                <p className="text-sm text-muted-foreground">Sin pago mensual</p>
               </div>
 
               <div className="rounded-xl bg-slate-100 p-4">
@@ -657,70 +551,24 @@ export default function SellerDashboardPage() {
 
               <div className="rounded-xl bg-slate-100 p-4">
                 <p className="text-sm text-muted-foreground">Límite</p>
-                <p className="text-3xl font-bold">
-                  {hasUnlimitedPosts ? '∞' : postingLimit}
-                </p>
+                <p className="text-3xl font-bold">∞</p>
               </div>
 
               <div className="rounded-xl bg-slate-100 p-4">
-                <p className="text-sm text-muted-foreground">Disponibles</p>
-                <p className="text-3xl font-bold">
-                  {hasUnlimitedPosts ? 'Ilimitado' : remainingPosts}
-                </p>
+                <p className="text-sm text-muted-foreground">Comisión</p>
+                <p className="text-3xl font-bold">{PLATFORM_COMMISSION_RATE}%</p>
               </div>
             </div>
 
-            {!hasUnlimitedPosts && (
-              <div className="mb-5">
-                <div className="mb-2 flex justify-between text-sm">
-                  <span>Uso de publicaciones</span>
-                  <span>
-                    {publishedCount}/{postingLimit}
-                  </span>
-                </div>
-
-                <div className="h-3 w-full overflow-hidden rounded-full bg-slate-200">
-                  <div
-                    className={`h-full rounded-full ${
-                      canPublish ? 'bg-primary' : 'bg-amber-500'
-                    }`}
-                    style={{ width: `${progressPercent}%` }}
-                  />
-                </div>
+            <div className="mt-5 rounded-xl border border-blue-200 bg-blue-50 p-4 text-sm text-blue-800">
+              <div className="mb-1 flex items-center gap-2 font-semibold">
+                <ShieldCheck className="h-4 w-4" />
+                Nuevo modelo comercial
               </div>
-            )}
-
-            {currentPlanType === 'free' && !isVerified && (
-              <div className="mb-5 rounded-xl border border-yellow-200 bg-yellow-50 p-4 text-sm text-yellow-800">
-                <div className="mb-1 flex items-center gap-2 font-semibold">
-                  <AlertTriangle className="h-4 w-4" />
-                  Verificación pendiente
-                </div>
-                Los usuarios no verificados con Plan Gratis solo pueden publicar hasta 2 artículos.
-                Los planes Plus y Premium usan el límite completo de su membresía.
-              </div>
-            )}
-
-            {!canPublish && (
-              <div className="rounded-xl border border-amber-200 bg-amber-50 p-5">
-                <div className="mb-2 flex items-center gap-2 font-semibold text-amber-900">
-                  <Lock className="h-5 w-5" />
-                  Alcanzaste el límite de publicaciones
-                </div>
-
-                <p className="mb-4 text-sm text-amber-800">
-                  Para continuar publicando artículos en La Segunda, debes activar una
-                  membresía Plus o Premium.
-                </p>
-
-                <Link href="/seller/membership">
-                  <Button className="bg-amber-600 hover:bg-amber-700">
-                    <Crown className="mr-2 h-4 w-4" />
-                    Ver planes de membresía
-                  </Button>
-                </Link>
-              </div>
-            )}
+              Los vendedores pueden publicar productos sin comprar membresías.
+              La comisión se cobra cuando el comprador usa el contacto protegido
+              y paga mediante Mercado Pago.
+            </div>
           </CardContent>
         </Card>
 
@@ -1000,7 +848,7 @@ export default function SellerDashboardPage() {
                 S/ {totalRevenue.toLocaleString()}
               </div>
               <p className="mt-1 text-xs text-muted-foreground">
-                Neto: S/ {netEarnings.toLocaleString()}
+                Estimado según ventas registradas
               </p>
             </CardContent>
           </Card>
@@ -1095,29 +943,35 @@ export default function SellerDashboardPage() {
         <div className="mb-8 grid gap-6 lg:grid-cols-2">
           <Card>
             <CardHeader>
-              <CardTitle>Plan actual</CardTitle>
-              <CardDescription>Membresía real registrada en Supabase.</CardDescription>
+              <CardTitle>Modelo comercial</CardTitle>
+              <CardDescription>
+                Ya no existen membresías ni límites por plan.
+              </CardDescription>
             </CardHeader>
 
             <CardContent className="space-y-4">
-              <div className="flex items-center justify-between gap-4">
+              <div className="flex items-center justify-between gap-4 rounded-xl bg-slate-50 p-4">
                 <div>
-                  <div className="font-semibold">{currentPlan.name}</div>
+                  <div className="font-semibold">
+                    Comisión por contacto seguro
+                  </div>
                   <div className="text-sm text-muted-foreground">
-                    Comisión: {currentPlan.commissionRate}%
+                    El comprador paga el 10% del precio del producto para contactar al vendedor.
                   </div>
                 </div>
 
-                <Badge className={currentPlan.badgeClass}>
-                  {currentPlan.price}
+                <Badge className="bg-blue-100 text-blue-800">
+                  {PLATFORM_COMMISSION_RATE}%
                 </Badge>
               </div>
 
-              <Link href="/seller/membership">
-                <Button variant="outline" className="w-full">
-                  Ver planes
-                </Button>
-              </Link>
+              <div className="rounded-xl border border-blue-200 bg-blue-50 p-4 text-sm text-blue-800">
+                <div className="mb-1 flex items-center gap-2 font-semibold">
+                  <Percent className="h-4 w-4" />
+                  Ejemplo
+                </div>
+                Producto de S/ 100 → contacto seguro de S/ 10 mediante Mercado Pago.
+              </div>
             </CardContent>
           </Card>
 
@@ -1138,15 +992,15 @@ export default function SellerDashboardPage() {
 
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">
-                    Comisión ({currentPlan.commissionRate}%):
+                    Comisión estimada ({PLATFORM_COMMISSION_RATE}%):
                   </span>
                   <span className="font-medium">
-                    -S/ {commissionEarnings.toLocaleString()}
+                    S/ {commissionEarnings.toLocaleString()}
                   </span>
                 </div>
 
                 <div className="flex justify-between border-t pt-2">
-                  <span className="font-semibold">Ganancias netas:</span>
+                  <span className="font-semibold">Referencia neta:</span>
                   <span className="font-bold text-primary">
                     S/ {netEarnings.toLocaleString()}
                   </span>
@@ -1165,24 +1019,15 @@ export default function SellerDashboardPage() {
               </CardDescription>
             </div>
 
-            {canPublish ? (
-              <Button
-                type="button"
-                size="sm"
-                onClick={openPublishForm}
-                disabled={isProductsLoading || isMembershipLoading || isSavingProduct}
-              >
-                <Plus className="mr-1 h-4 w-4" />
-                Nuevo
-              </Button>
-            ) : (
-              <Link href="/seller/membership">
-                <Button size="sm" className="bg-amber-600 hover:bg-amber-700">
-                  <Lock className="mr-1 h-4 w-4" />
-                  Plan
-                </Button>
-              </Link>
-            )}
+            <Button
+              type="button"
+              size="sm"
+              onClick={openPublishForm}
+              disabled={isProductsLoading || isSavingProduct}
+            >
+              <Plus className="mr-1 h-4 w-4" />
+              Nuevo
+            </Button>
           </CardHeader>
 
           <CardContent>
@@ -1305,17 +1150,9 @@ export default function SellerDashboardPage() {
                   Aún no has publicado productos.
                 </p>
 
-                {canPublish ? (
-                  <Button type="button" onClick={openPublishForm}>
-                    Publicar primer producto
-                  </Button>
-                ) : (
-                  <Link href="/seller/membership">
-                    <Button className="bg-amber-600 hover:bg-amber-700">
-                      Ver planes de membresía
-                    </Button>
-                  </Link>
-                )}
+                <Button type="button" onClick={openPublishForm}>
+                  Publicar primer producto
+                </Button>
               </div>
             )}
           </CardContent>
@@ -1337,9 +1174,7 @@ export default function SellerDashboardPage() {
                       className="flex items-center justify-between rounded-lg border p-4"
                     >
                       <div>
-                        <h4 className="font-semibold">
-                          Producto vendido
-                        </h4>
+                        <h4 className="font-semibold">Producto vendido</h4>
                         <p className="text-sm text-muted-foreground">
                           Orden {order.id} • {order.createdAt}
                         </p>
