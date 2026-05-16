@@ -33,6 +33,16 @@ function extractPaymentId(request: NextRequest, body: any) {
   return match ? match[0] : '';
 }
 
+function toNumber(value: any, fallback = 0) {
+  const numberValue = Number(value);
+
+  if (!Number.isFinite(numberValue)) {
+    return fallback;
+  }
+
+  return numberValue;
+}
+
 async function getMercadoPagoPayment(paymentId: string, accessToken: string) {
   const response = await fetch(
     `https://api.mercadopago.com/v1/payments/${paymentId}`,
@@ -64,9 +74,20 @@ function extractContactPaymentData(payment: any) {
 
   let userId = String(metadata.user_id || metadata.userId || '');
   let userEmail = String(metadata.user_email || metadata.userEmail || '');
+  let sellerId = String(metadata.seller_id || metadata.sellerId || '');
   let productId = String(metadata.product_id || metadata.productId || '');
   let productTitle = String(metadata.product_title || metadata.productTitle || '');
   let productType = String(metadata.product_type || metadata.productType || '');
+
+  const productPrice = toNumber(metadata.product_price || metadata.productPrice);
+  const commissionRate = toNumber(
+    metadata.commission_rate || metadata.commissionRate,
+    10
+  );
+  const commissionAmount = toNumber(
+    metadata.commission_amount || metadata.commissionAmount,
+    0
+  );
 
   const externalReference = String(payment?.external_reference || '');
 
@@ -83,9 +104,13 @@ function extractContactPaymentData(payment: any) {
   return {
     userId,
     userEmail,
+    sellerId,
     productId,
     productTitle,
     productType,
+    productPrice,
+    commissionRate,
+    commissionAmount,
   };
 }
 
@@ -103,7 +128,6 @@ export async function POST(request: NextRequest) {
     const mercadoPagoAccessToken = getRequiredEnv('MERCADOPAGO_ACCESS_TOKEN');
 
     const body = await request.json().catch(() => ({}));
-
     const paymentId = extractPaymentId(request, body);
 
     if (!paymentId) {
@@ -131,9 +155,13 @@ export async function POST(request: NextRequest) {
     const {
       userId,
       userEmail,
+      sellerId,
       productId,
       productTitle,
       productType,
+      productPrice,
+      commissionRate,
+      commissionAmount,
     } = extractContactPaymentData(payment);
 
     if (productType !== 'seller_contact') {
@@ -157,6 +185,27 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const paidAmount = toNumber(
+      payment.transaction_amount ||
+        payment.transaction_details?.total_paid_amount ||
+        0
+    );
+
+    if (commissionAmount > 0 && Math.abs(paidAmount - commissionAmount) > 0.01) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: 'El monto pagado no coincide con la comisión esperada.',
+          paymentId,
+          paidAmount,
+          commissionAmount,
+        },
+        { status: 400 }
+      );
+    }
+
+    const currency = String(payment.currency_id || 'PEN');
+
     const supabaseAdmin = createClient(supabaseUrl, supabaseServiceRoleKey, {
       auth: {
         autoRefreshToken: false,
@@ -164,24 +213,20 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    const amount = Number(
-      payment.transaction_amount ||
-        payment.transaction_details?.total_paid_amount ||
-        0
-    );
-
-    const currency = String(payment.currency_id || 'PEN');
-
     const { error: upsertError } = await supabaseAdmin
       .from('contact_payments')
       .upsert(
         {
           user_id: userId,
           user_email: userEmail || null,
+          seller_id: sellerId || null,
           product_id: productId,
           product_title: productTitle || null,
+          product_price: productPrice || 0,
+          commission_rate: commissionRate || 10,
+          commission_amount: commissionAmount || paidAmount,
           status: 'approved',
-          amount,
+          amount: paidAmount,
           currency,
           provider: 'mercadopago',
           provider_payment_id: String(payment.id),
@@ -207,8 +252,12 @@ export async function POST(request: NextRequest) {
       ok: true,
       message: 'Pago de contacto registrado correctamente.',
       userId,
+      sellerId,
       productId,
       paymentId,
+      paidAmount,
+      commissionRate,
+      commissionAmount,
     });
   } catch (error: any) {
     return NextResponse.json(
