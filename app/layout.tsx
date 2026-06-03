@@ -39,6 +39,7 @@ export const metadata: Metadata = {
   publisher: 'La Segunda Market',
   applicationName: 'La Segunda Market',
   category: 'marketplace',
+  manifest: '/manifest.json',
   alternates: {
     canonical: '/',
   },
