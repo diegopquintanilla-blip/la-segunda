@@ -3,18 +3,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { Header } from '@/components/header';
-import { useAuth } from '@/lib/auth-context';
-import { supabase } from '@/lib/supabase/client';
-import { Button } from '@/components/ui/button';
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
 import {
   AlertCircle,
   Calendar,
@@ -24,11 +12,10 @@ import {
   Eye,
   Heart,
   Loader2,
-  Lock,
   Mail,
   MapPin,
-  MoreVertical,
   PackagePlus,
+  Phone,
   Save,
   ShieldCheck,
   Star,
@@ -38,12 +25,26 @@ import {
   X,
 } from 'lucide-react';
 
+import { Header } from '@/components/header';
+import { useAuth } from '@/lib/auth-context';
+import { supabase } from '@/lib/supabase/client';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from '@/components/ui/card';
+
 // ============================================================
 // TIPOS
 // ============================================================
 
 type ProfileData = {
-  user_id: string;
+  id?: string | null;
+  user_id?: string | null;
   full_name: string | null;
   username: string | null;
   email: string | null;
@@ -51,9 +52,9 @@ type ProfileData = {
   city: string | null;
   bio: string | null;
   avatar_url: string | null;
-  gender: 'male' | 'female' | 'neutral' | null;
-  account_type: 'buyer' | 'seller' | 'both' | null;
-  verification_status: 'pending' | 'verified' | 'rejected' | null;
+  gender: 'male' | 'female' | 'neutral' | string | null;
+  account_type: 'buyer' | 'seller' | 'both' | string | null;
+  verification_status: 'pending' | 'verified' | 'rejected' | string | null;
   is_seller: boolean | null;
   membership_type: string | null;
   seller_badge: string | null;
@@ -91,16 +92,15 @@ type ProductRow = {
   thumbnail_url?: string | null;
 
   views?: number | string | null;
-  views_count?: number | string | null;
   view_count?: number | string | null;
+  views_count?: number | string | null;
 
-  favoriteCount?: number | string | null;
   favorite_count?: number | string | null;
   favorites_count?: number | string | null;
+  favoriteCount?: number | string | null;
 
   created_at?: string | null;
   createdAt?: string | null;
-  updated_at?: string | null;
 };
 
 // ============================================================
@@ -133,18 +133,6 @@ function isValidImageUrl(value?: string | null) {
   );
 }
 
-function getAvatarEmoji(gender?: string | null) {
-  if (gender === 'male') return '👨‍💼';
-  if (gender === 'female') return '👩‍💼';
-  return '🙂';
-}
-
-function getAccountTypeLabel(accountType?: string | null) {
-  if (accountType === 'seller') return 'Vendedor';
-  if (accountType === 'both') return 'Comprador + Vendedor';
-  return 'Comprador';
-}
-
 function parseImages(value?: string[] | string | null): string[] {
   if (!value) return [];
 
@@ -173,38 +161,16 @@ function parseImages(value?: string[] | string | null): string[] {
   return [];
 }
 
-function getProductImage(product: ProductRow) {
-  const images = parseImages(product.images);
-
-  const image =
-    product.image_url ||
-    images[0] ||
-    product.image ||
-    product.thumbnail_url ||
-    '';
-
-  return isValidImageUrl(image) ? image : DEFAULT_PRODUCT_IMAGE;
+function getAvatarEmoji(gender?: string | null) {
+  if (gender === 'male') return '👨‍💼';
+  if (gender === 'female') return '👩‍💼';
+  return '🙂';
 }
 
-function getProductTitle(product: ProductRow) {
-  return product.title || product.name || 'Producto sin nombre';
-}
-
-function getProductPrice(product: ProductRow) {
-  return Number(product.price || 0);
-}
-
-function getProductViews(product: ProductRow) {
-  return Number(product.views ?? product.views_count ?? product.view_count ?? 0);
-}
-
-function getProductFavorites(product: ProductRow) {
-  return Number(
-    product.favoriteCount ??
-      product.favorite_count ??
-      product.favorites_count ??
-      0
-  );
+function getAccountTypeLabel(accountType?: string | null) {
+  if (accountType === 'seller') return 'Vendedor';
+  if (accountType === 'both') return 'Comprador + Vendedor';
+  return 'Comprador';
 }
 
 function getProductOwnerId(product: ProductRow) {
@@ -219,6 +185,40 @@ function getProductOwnerId(product: ProductRow) {
   );
 }
 
+function getProductTitle(product: ProductRow) {
+  return product.title || product.name || 'Producto sin nombre';
+}
+
+function getProductImage(product: ProductRow) {
+  const images = parseImages(product.images);
+
+  const image =
+    product.image_url ||
+    images[0] ||
+    product.image ||
+    product.thumbnail_url ||
+    '';
+
+  return isValidImageUrl(image) ? image : DEFAULT_PRODUCT_IMAGE;
+}
+
+function getProductPrice(product: ProductRow) {
+  return Number(product.price || 0);
+}
+
+function getProductViews(product: ProductRow) {
+  return Number(product.views ?? product.views_count ?? product.view_count ?? 0);
+}
+
+function getProductFavorites(product: ProductRow) {
+  return Number(
+    product.favorite_count ??
+      product.favorites_count ??
+      product.favoriteCount ??
+      0
+  );
+}
+
 function getProductStatus(product: ProductRow) {
   return String(product.status || 'active').toLowerCase();
 }
@@ -227,12 +227,24 @@ function getStatusLabel(status?: string | null) {
   const value = String(status || 'active').toLowerCase();
 
   if (value === 'active') return 'Activo';
+  if (value === 'published') return 'Publicado';
+  if (value === 'available') return 'Disponible';
   if (value === 'reserved') return 'Reservado';
   if (value === 'sold') return 'Vendido';
   if (value === 'pending') return 'Pendiente';
   if (value === 'inactive') return 'Inactivo';
 
   return value;
+}
+
+function getStatusBadgeClass(status?: string | null) {
+  const value = String(status || 'active').toLowerCase();
+
+  if (value === 'reserved') return 'bg-amber-100 text-amber-800 hover:bg-amber-100';
+  if (value === 'sold') return 'bg-slate-700 text-white hover:bg-slate-700';
+  if (value === 'pending') return 'bg-slate-100 text-slate-700 hover:bg-slate-100';
+
+  return 'bg-blue-900 text-white hover:bg-blue-900';
 }
 
 function sortProductsByDate(products: ProductRow[]) {
@@ -255,19 +267,24 @@ export default function ProfilePage() {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   // ----------------------------------------------------------
-  // Estado: perfil
+  // PERFIL
   // ----------------------------------------------------------
 
   const [profile, setProfile] = useState<ProfileData | null>(null);
   const [isEditingBio, setIsEditingBio] = useState(false);
-  const [bioText, setBioText] = useState('');
+
+  const [fullNameText, setFullNameText] = useState('');
+  const [emailText, setEmailText] = useState('');
+  const [phoneText, setPhoneText] = useState('');
   const [cityText, setCityText] = useState('');
+  const [bioText, setBioText] = useState('');
+
   const [isSavingProfile, setIsSavingProfile] = useState(false);
   const [profileMessage, setProfileMessage] = useState('');
   const [profileError, setProfileError] = useState('');
 
   // ----------------------------------------------------------
-  // Estado: avatar
+  // AVATAR
   // ----------------------------------------------------------
 
   const [avatarLoadError, setAvatarLoadError] = useState(false);
@@ -276,31 +293,120 @@ export default function ProfilePage() {
   const [avatarError, setAvatarError] = useState('');
 
   // ----------------------------------------------------------
-  // Estado: productos
+  // PRODUCTOS
   // ----------------------------------------------------------
 
   const [products, setProducts] = useState<ProductRow[]>([]);
   const [isLoadingProducts, setIsLoadingProducts] = useState(false);
-  const [editingProduct, setEditingProduct] = useState<ProductRow | null>(null);
   const [productMessage, setProductMessage] = useState('');
   const [productError, setProductError] = useState('');
-
-  const [editTitle, setEditTitle] = useState('');
-  const [editDescription, setEditDescription] = useState('');
-  const [editPrice, setEditPrice] = useState('');
-  const [editCity, setEditCity] = useState('');
-  const [editCondition, setEditCondition] = useState('Bueno');
-  const [editImage, setEditImage] = useState('');
-  const [editStatus, setEditStatus] = useState('active');
-  const [isUploadingProductImage, setIsUploadingProductImage] = useState(false);
-  const [isSavingProduct, setIsSavingProduct] = useState(false);
   const [isDeletingProductId, setIsDeletingProductId] = useState<string | null>(
     null
   );
 
   // ============================================================
-  // FUNCIONES: CARGA DE PRODUCTOS DESDE SUPABASE
+  // FUNCIONES BASE
   // ============================================================
+
+  const currentUser = user as any;
+
+  const loadProfile = useCallback(async () => {
+    if (!user?.id) return;
+
+    setProfileError('');
+
+    try {
+      const profileColumns = ['user_id', 'id'];
+      let loadedProfile: ProfileData | null = null;
+      let lastErrorMessage = '';
+
+      for (const column of profileColumns) {
+        const { data, error } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq(column, user.id)
+          .maybeSingle();
+
+        if (!error && data) {
+          loadedProfile = data as ProfileData;
+          break;
+        }
+
+        if (error?.message) {
+          lastErrorMessage = error.message;
+        }
+      }
+
+      if (!loadedProfile) {
+        console.warn(
+          '[La Segunda] No se encontró perfil o no se pudo leer:',
+          lastErrorMessage
+        );
+
+        setFullNameText(currentUser?.name || '');
+        setEmailText(currentUser?.email || '');
+        setPhoneText(currentUser?.phone || '');
+        setCityText(currentUser?.city || '');
+        setBioText(currentUser?.bio || '');
+        return;
+      }
+
+      setProfile(loadedProfile);
+      setFullNameText(loadedProfile.full_name || currentUser?.name || '');
+      setEmailText(loadedProfile.email || currentUser?.email || '');
+      setPhoneText(loadedProfile.phone || currentUser?.phone || '');
+      setCityText(loadedProfile.city || currentUser?.city || '');
+      setBioText(loadedProfile.bio || currentUser?.bio || '');
+      setAvatarLoadError(false);
+    } catch (error: any) {
+      console.error('[La Segunda] Error cargando perfil:', error?.message);
+      setProfileError(error?.message || 'No se pudo cargar el perfil.');
+    }
+  }, [user?.id, currentUser?.name, currentUser?.email, currentUser?.phone, currentUser?.city, currentUser?.bio]);
+
+  const updateProfileInSupabase = async (payload: Record<string, any>) => {
+    if (!user?.id) {
+      throw new Error('Debes iniciar sesión para actualizar tu perfil.');
+    }
+
+    const profileColumns = ['user_id', 'id'];
+    let lastError: any = null;
+
+    for (const column of profileColumns) {
+      const { error } = await supabase
+        .from('profiles')
+        .update(payload)
+        .eq(column, user.id);
+
+      if (!error) {
+        return;
+      }
+
+      lastError = error;
+    }
+
+    const insertWithId = await supabase
+      .from('profiles')
+      .upsert({
+        id: user.id,
+        ...payload,
+      });
+
+    if (!insertWithId.error) {
+      return;
+    }
+
+    const insertWithUserId = await supabase
+      .from('profiles')
+      .upsert({
+        user_id: user.id,
+        ...payload,
+      });
+
+    if (insertWithUserId.error) {
+      throw lastError || insertWithUserId.error;
+    }
+  };
 
   const loadProducts = useCallback(async () => {
     if (!user?.id) return;
@@ -310,7 +416,8 @@ export default function ProfilePage() {
 
     try {
       const ownerColumns = ['seller_id', 'user_id', 'owner_id'];
-      let loadedProducts: ProductRow[] | null = null;
+      const combinedProducts: ProductRow[] = [];
+      let hadValidColumn = false;
       let lastErrorMessage = '';
 
       for (const column of ownerColumns) {
@@ -320,8 +427,8 @@ export default function ProfilePage() {
           .eq(column, user.id);
 
         if (!error && Array.isArray(data)) {
-          loadedProducts = data as ProductRow[];
-          break;
+          hadValidColumn = true;
+          combinedProducts.push(...(data as ProductRow[]));
         }
 
         if (error?.message) {
@@ -329,31 +436,41 @@ export default function ProfilePage() {
         }
       }
 
-      if (!loadedProducts) {
-        const { data, error } = await supabase.from('products').select('*');
+      if (hadValidColumn) {
+        const uniqueProducts = Array.from(
+          new Map(combinedProducts.map((product) => [product.id, product])).values()
+        );
 
-        if (error) {
-          throw error;
-        }
-
-        const rows = Array.isArray(data) ? (data as ProductRow[]) : [];
-
-        loadedProducts = rows.filter((product) => {
-          const ownerId = getProductOwnerId(product);
-
-          if (!ownerId) return true;
-
-          return ownerId === user.id;
-        });
+        setProducts(sortProductsByDate(uniqueProducts));
+        return;
       }
 
-      setProducts(sortProductsByDate(loadedProducts));
-    } catch (err: any) {
-      console.error('[La Segunda] Error cargando productos:', err?.message);
+      const { data, error } = await supabase.from('products').select('*');
+
+      if (error) {
+        throw error;
+      }
+
+      const rows = Array.isArray(data) ? (data as ProductRow[]) : [];
+
+      const filteredProducts = rows.filter((product) => {
+        const ownerId = getProductOwnerId(product);
+
+        if (!ownerId) return false;
+
+        return ownerId === user.id;
+      });
+
+      setProducts(sortProductsByDate(filteredProducts));
+
+      if (!hadValidColumn && lastErrorMessage) {
+        console.warn('[La Segunda] Columnas owner no detectadas:', lastErrorMessage);
+      }
+    } catch (error: any) {
+      console.error('[La Segunda] Error cargando productos:', error?.message);
       setProducts([]);
       setProductError(
-        err?.message ||
-          'No se pudieron cargar tus productos desde Supabase.'
+        error?.message || 'No se pudieron cargar tus productos desde Supabase.'
       );
     } finally {
       setIsLoadingProducts(false);
@@ -371,42 +488,15 @@ export default function ProfilePage() {
   }, [isLoading, isAuthenticated, router]);
 
   useEffect(() => {
-    const loadProfile = async () => {
-      if (!user?.id) return;
-
-      const { data, error } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('user_id', user.id)
-        .maybeSingle();
-
-      if (error) {
-        console.error('[La Segunda] Error cargando profile:', error.message);
-        return;
-      }
-
-      if (data) {
-        setProfile(data as ProfileData);
-        setBioText(data.bio || '');
-        setCityText(data.city || '');
-        setAvatarLoadError(false);
-      }
-    };
-
-    loadProfile();
-  }, [user?.id]);
-
-  useEffect(() => {
     if (!isAuthenticated || !user?.id) return;
 
+    loadProfile();
     loadProducts();
-  }, [isAuthenticated, user?.id, loadProducts]);
+  }, [isAuthenticated, user?.id, loadProfile, loadProducts]);
 
   // ============================================================
   // DATOS DERIVADOS
   // ============================================================
-
-  const currentUser = user as any;
 
   const displayName =
     profile?.full_name ||
@@ -415,7 +505,9 @@ export default function ProfilePage() {
     'Usuario La Segunda';
 
   const displayEmail = profile?.email || currentUser?.email || '';
+  const displayPhone = profile?.phone || currentUser?.phone || '';
   const displayCity = profile?.city || currentUser?.city || 'Lima';
+
   const accountType = profile?.account_type || currentUser?.accountType || 'buyer';
 
   const verificationStatus =
@@ -467,7 +559,7 @@ export default function ProfilePage() {
   const activeProducts = userProducts.filter((product) => {
     const status = getProductStatus(product);
 
-    return status === 'active' || !status;
+    return status === 'active' || status === 'published' || status === 'available';
   });
 
   const totalViews = userProducts.reduce(
@@ -482,7 +574,6 @@ export default function ProfilePage() {
 
   const profileLimit = Number(profile?.monthly_listing_limit || 0);
   const planLimit = PLAN_LIMITS[membershipType] ?? 2;
-
   const postingLimit = profileLimit > 0 ? profileLimit : planLimit;
 
   const remainingPosts =
@@ -547,15 +638,37 @@ export default function ProfilePage() {
 
       const publicUrl = publicUrlData.publicUrl;
 
-      const { error: profileError } = await supabase
-        .from('profiles')
-        .update({ avatar_url: publicUrl })
-        .eq('user_id', user.id);
-
-      if (profileError) throw profileError;
+      await updateProfileInSupabase({
+        avatar_url: publicUrl,
+      });
 
       setProfile((currentProfile) => {
-        if (!currentProfile) return currentProfile;
+        if (!currentProfile) {
+          return {
+            id: user.id,
+            user_id: user.id,
+            full_name: fullNameText,
+            username: null,
+            email: emailText,
+            phone: phoneText,
+            city: cityText,
+            bio: bioText,
+            avatar_url: publicUrl,
+            gender,
+            account_type: accountType,
+            verification_status: verificationStatus,
+            is_seller: null,
+            membership_type: membershipType,
+            seller_badge: null,
+            subscription_status: null,
+            commission_rate: null,
+            monthly_listing_limit: profileLimit || 2,
+            rating,
+            review_count: reviewCount,
+            created_at: null,
+          };
+        }
+
         return { ...currentProfile, avatar_url: publicUrl };
       });
 
@@ -563,9 +676,9 @@ export default function ProfilePage() {
 
       setAvatarLoadError(false);
       setAvatarMessage('Avatar actualizado correctamente.');
-    } catch (err: any) {
+    } catch (error: any) {
       setAvatarError(
-        err?.message || 'No se pudo subir la imagen. Intenta nuevamente.'
+        error?.message || 'No se pudo subir la imagen. Intenta nuevamente.'
       );
     } finally {
       setIsUploadingAvatar(false);
@@ -589,299 +702,99 @@ export default function ProfilePage() {
       return;
     }
 
+    if (!fullNameText.trim()) {
+      setProfileError('Ingresa tu nombre visible.');
+      return;
+    }
+
+    if (!emailText.trim()) {
+      setProfileError('Ingresa tu correo visible.');
+      return;
+    }
+
+    if (!phoneText.trim()) {
+      setProfileError('Ingresa tu teléfono visible.');
+      return;
+    }
+
     setIsSavingProfile(true);
 
     try {
-      const { error } = await supabase
-        .from('profiles')
-        .update({
-          bio: bioText.trim(),
-          city: cityText.trim(),
-        })
-        .eq('user_id', user.id);
+      const payload = {
+        full_name: fullNameText.trim(),
+        email: emailText.trim(),
+        phone: phoneText.trim(),
+        city: cityText.trim(),
+        bio: bioText.trim(),
+      };
 
-      if (error) throw error;
+      await updateProfileInSupabase(payload);
 
       setProfile((currentProfile) => {
-        if (!currentProfile) return currentProfile;
+        if (!currentProfile) {
+          return {
+            id: user.id,
+            user_id: user.id,
+            full_name: payload.full_name,
+            username: null,
+            email: payload.email,
+            phone: payload.phone,
+            city: payload.city,
+            bio: payload.bio,
+            avatar_url: safeAvatarUrl || null,
+            gender,
+            account_type: accountType,
+            verification_status: verificationStatus,
+            is_seller: null,
+            membership_type: membershipType,
+            seller_badge: null,
+            subscription_status: null,
+            commission_rate: null,
+            monthly_listing_limit: profileLimit || 2,
+            rating,
+            review_count: reviewCount,
+            created_at: null,
+          };
+        }
 
         return {
           ...currentProfile,
-          bio: bioText.trim(),
-          city: cityText.trim(),
+          ...payload,
         };
       });
 
       updateUser({
-        bio: bioText.trim(),
-        city: cityText.trim(),
+        name: payload.full_name,
+        email: payload.email,
+        phone: payload.phone,
+        city: payload.city,
+        bio: payload.bio,
       } as any);
 
       setIsEditingBio(false);
-      setProfileMessage('Perfil actualizado correctamente.');
-    } catch (err: any) {
+      setProfileMessage('Perfil actualizado correctamente. Tus datos ya serán visibles en tus productos.');
+    } catch (error: any) {
       setProfileError(
-        err?.message || 'No se pudo actualizar el perfil. Intenta nuevamente.'
+        error?.message || 'No se pudo actualizar el perfil. Intenta nuevamente.'
       );
     } finally {
       setIsSavingProfile(false);
     }
   };
 
+  const handleCancelEditProfile = () => {
+    setIsEditingBio(false);
+    setFullNameText(profile?.full_name || currentUser?.name || '');
+    setEmailText(profile?.email || currentUser?.email || '');
+    setPhoneText(profile?.phone || currentUser?.phone || '');
+    setCityText(profile?.city || currentUser?.city || '');
+    setBioText(profile?.bio || currentUser?.bio || '');
+    setProfileError('');
+  };
+
   // ============================================================
   // FUNCIONES: PRODUCTOS
   // ============================================================
-
-  const openEditProduct = (product: ProductRow) => {
-    setProductMessage('');
-    setProductError('');
-
-    setEditingProduct(product);
-    setEditTitle(getProductTitle(product));
-    setEditDescription(product.description || '');
-    setEditPrice(String(product.price || ''));
-    setEditCity(product.city || '');
-    setEditCondition(product.condition || 'Bueno');
-    setEditImage(getProductImage(product));
-    setEditStatus(product.status || 'active');
-
-    setTimeout(() => {
-      document
-        .getElementById('editar-producto')
-        ?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    }, 100);
-  };
-
-  const closeEditProduct = () => {
-    setEditingProduct(null);
-    setEditTitle('');
-    setEditDescription('');
-    setEditPrice('');
-    setEditCity('');
-    setEditCondition('Bueno');
-    setEditImage('');
-    setEditStatus('active');
-    setProductError('');
-  };
-
-  const handleUploadProductImage = async (
-    event: React.ChangeEvent<HTMLInputElement>
-  ) => {
-    setProductError('');
-    setProductMessage('');
-
-    const file = event.target.files?.[0];
-    if (!file) return;
-
-    if (!user?.id) {
-      setProductError('Debes iniciar sesión para subir una foto.');
-      return;
-    }
-
-    if (!file.type.startsWith('image/')) {
-      setProductError('Solo puedes subir archivos de imagen.');
-      return;
-    }
-
-    if (file.size > 5 * 1024 * 1024) {
-      setProductError('La imagen no debe superar los 5 MB.');
-      return;
-    }
-
-    setIsUploadingProductImage(true);
-
-    try {
-      const fileExt = file.name.split('.').pop() || 'jpg';
-      const fileName = `product-${Date.now()}.${fileExt}`;
-      const filePath = `${user.id}/${fileName}`;
-
-      const { error: uploadError } = await supabase.storage
-        .from('product-images')
-        .upload(filePath, file, {
-          cacheControl: '3600',
-          upsert: true,
-        });
-
-      if (uploadError) throw uploadError;
-
-      const { data: publicUrlData } = supabase.storage
-        .from('product-images')
-        .getPublicUrl(filePath);
-
-      setEditImage(publicUrlData.publicUrl);
-      setProductMessage('Foto cargada correctamente. Ahora guarda los cambios.');
-    } catch (err: any) {
-      setProductError(
-        err?.message ||
-          'No se pudo subir la foto. Verifica el bucket product-images en Supabase.'
-      );
-    } finally {
-      setIsUploadingProductImage(false);
-      event.target.value = '';
-    }
-  };
-
-  const buildProductUpdatePayload = (
-    product: ProductRow,
-    finalImage: string
-  ) => {
-    const payload: Record<string, any> = {};
-
-    if ('title' in product || !('name' in product)) {
-      payload.title = editTitle.trim();
-    }
-
-    if ('name' in product) {
-      payload.name = editTitle.trim();
-    }
-
-    if ('description' in product) {
-      payload.description = editDescription.trim();
-    }
-
-    if ('price' in product) {
-      payload.price = Number(editPrice);
-    }
-
-    if ('city' in product) {
-      payload.city = editCity.trim();
-    }
-
-    if ('condition' in product) {
-      payload.condition = editCondition;
-    }
-
-    if ('status' in product) {
-      payload.status = editStatus;
-    }
-
-    if ('image_url' in product) {
-      payload.image_url = finalImage;
-    }
-
-    if ('images' in product) {
-      payload.images = [finalImage];
-    }
-
-    if ('image' in product) {
-      payload.image = finalImage;
-    }
-
-    if ('updated_at' in product) {
-      payload.updated_at = new Date().toISOString();
-    }
-
-    return payload;
-  };
-
-  const updateProductInSupabase = async (
-    productId: string,
-    payload: Record<string, any>
-  ) => {
-    if (!user?.id) {
-      throw new Error('Debes iniciar sesión para editar el producto.');
-    }
-
-    const ownerColumns = ['seller_id', 'user_id', 'owner_id'];
-
-    for (const column of ownerColumns) {
-      const { data, error } = await supabase
-        .from('products')
-        .update(payload)
-        .eq('id', productId)
-        .eq(column, user.id)
-        .select('*')
-        .maybeSingle();
-
-      if (!error && data) {
-        return data as ProductRow;
-      }
-    }
-
-    const { data, error } = await supabase
-      .from('products')
-      .update(payload)
-      .eq('id', productId)
-      .select('*')
-      .maybeSingle();
-
-    if (error) throw error;
-
-    if (!data) {
-      throw new Error('No se pudo actualizar el producto.');
-    }
-
-    return data as ProductRow;
-  };
-
-  const handleSaveProduct = async () => {
-    setProductMessage('');
-    setProductError('');
-
-    if (!editingProduct) return;
-
-    if (!editTitle.trim()) {
-      setProductError('Ingresa el nombre del producto.');
-      return;
-    }
-
-    if (!editPrice || Number(editPrice) <= 0) {
-      setProductError('Ingresa un precio válido.');
-      return;
-    }
-
-    if (!editCity.trim()) {
-      setProductError('Ingresa la ciudad del producto.');
-      return;
-    }
-
-    setIsSavingProduct(true);
-
-    try {
-      const finalImage =
-        editImage.trim() || getProductImage(editingProduct) || DEFAULT_PRODUCT_IMAGE;
-
-      const payload = buildProductUpdatePayload(editingProduct, finalImage);
-
-      await updateProductInSupabase(editingProduct.id, payload);
-      await loadProducts();
-
-      setProductMessage('Producto actualizado correctamente.');
-      closeEditProduct();
-    } catch (err: any) {
-      setProductError(
-        err?.message || 'No se pudo actualizar el producto en Supabase.'
-      );
-    } finally {
-      setIsSavingProduct(false);
-    }
-  };
-
-  const deleteProductInSupabase = async (productId: string) => {
-    if (!user?.id) {
-      throw new Error('Debes iniciar sesión para eliminar el producto.');
-    }
-
-    const ownerColumns = ['seller_id', 'user_id', 'owner_id'];
-
-    for (const column of ownerColumns) {
-      const { data, error } = await supabase
-        .from('products')
-        .delete()
-        .eq('id', productId)
-        .eq(column, user.id)
-        .select('id')
-        .maybeSingle();
-
-      if (!error && data) {
-        return;
-      }
-    }
-
-    const { error } = await supabase.from('products').delete().eq('id', productId);
-
-    if (error) throw error;
-  };
 
   const handleDeleteProduct = async (productId: string) => {
     const confirmed = window.confirm(
@@ -895,17 +808,47 @@ export default function ProfilePage() {
     setProductError('');
 
     try {
-      await deleteProductInSupabase(productId);
+      if (!user?.id) {
+        throw new Error('Debes iniciar sesión para eliminar productos.');
+      }
+
+      const ownerColumns = ['seller_id', 'user_id', 'owner_id'];
+      let deleted = false;
+      let lastError: any = null;
+
+      for (const column of ownerColumns) {
+        const { data, error } = await supabase
+          .from('products')
+          .delete()
+          .eq('id', productId)
+          .eq(column, user.id)
+          .select('id')
+          .maybeSingle();
+
+        if (!error && data) {
+          deleted = true;
+          break;
+        }
+
+        if (error) {
+          lastError = error;
+        }
+      }
+
+      if (!deleted) {
+        const { error } = await supabase.from('products').delete().eq('id', productId);
+
+        if (error) {
+          throw lastError || error;
+        }
+      }
+
       await loadProducts();
 
       setProductMessage('Producto eliminado correctamente.');
-
-      if (editingProduct?.id === productId) {
-        closeEditProduct();
-      }
-    } catch (err: any) {
+    } catch (error: any) {
       setProductError(
-        err?.message || 'No se pudo eliminar el producto en Supabase.'
+        error?.message || 'No se pudo eliminar el producto en Supabase.'
       );
     } finally {
       setIsDeletingProductId(null);
@@ -1121,8 +1064,8 @@ export default function ProfilePage() {
           </CardContent>
         </Card>
 
-        {/* SOBRE MI + SEGURIDAD */}
-        <section className="mb-5 grid items-start gap-5 lg:grid-cols-[1fr_360px]">
+        {/* PERFIL + CONTACTO */}
+        <section className="mb-5 grid items-start gap-5 lg:grid-cols-[1fr_380px]">
           <Card className="h-fit rounded-2xl border-slate-200 bg-white shadow-sm">
             <CardHeader className="pb-3">
               <div className="flex items-center justify-between gap-3">
@@ -1161,14 +1104,47 @@ export default function ProfilePage() {
 
               {isEditingBio ? (
                 <div className="space-y-4">
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium">Ciudad</label>
-                    <input
-                      value={cityText}
-                      onChange={(event) => setCityText(event.target.value)}
-                      placeholder="Ejemplo: Lima"
-                      className="w-full rounded-md border bg-background px-3 py-2 text-sm"
-                    />
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium">Nombre visible</label>
+                      <input
+                        value={fullNameText}
+                        onChange={(event) => setFullNameText(event.target.value)}
+                        placeholder="Ejemplo: Diego Palomino"
+                        className="w-full rounded-md border bg-background px-3 py-2 text-sm"
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium">Ciudad</label>
+                      <input
+                        value={cityText}
+                        onChange={(event) => setCityText(event.target.value)}
+                        placeholder="Ejemplo: Lima"
+                        className="w-full rounded-md border bg-background px-3 py-2 text-sm"
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium">Correo visible</label>
+                      <input
+                        type="email"
+                        value={emailText}
+                        onChange={(event) => setEmailText(event.target.value)}
+                        placeholder="Ejemplo: vendedor@email.com"
+                        className="w-full rounded-md border bg-background px-3 py-2 text-sm"
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium">Teléfono visible</label>
+                      <input
+                        value={phoneText}
+                        onChange={(event) => setPhoneText(event.target.value)}
+                        placeholder="Ejemplo: 929676542"
+                        className="w-full rounded-md border bg-background px-3 py-2 text-sm"
+                      />
+                    </div>
                   </div>
 
                   <div className="space-y-2">
@@ -1181,6 +1157,11 @@ export default function ProfilePage() {
                     />
                   </div>
 
+                  <div className="rounded-xl border border-blue-100 bg-blue-50/70 p-4 text-sm text-blue-800">
+                    Estos datos serán visibles en tus productos para que los
+                    compradores puedan contactarte directamente.
+                  </div>
+
                   <div className="flex flex-col gap-3 sm:flex-row">
                     <Button onClick={handleSaveProfile} disabled={isSavingProfile}>
                       {isSavingProfile ? (
@@ -1190,68 +1171,110 @@ export default function ProfilePage() {
                         </>
                       ) : (
                         <>
-                          <CheckCircle className="mr-2 h-4 w-4" />
+                          <Save className="mr-2 h-4 w-4" />
                           Guardar cambios
                         </>
                       )}
                     </Button>
 
-                    <Button
-                      variant="outline"
-                      onClick={() => {
-                        setIsEditingBio(false);
-                        setBioText(profile?.bio || '');
-                        setCityText(profile?.city || '');
-                      }}
-                    >
+                    <Button variant="outline" onClick={handleCancelEditProfile}>
+                      <X className="mr-2 h-4 w-4" />
                       Cancelar
                     </Button>
                   </div>
                 </div>
               ) : (
-                <p className="leading-relaxed text-slate-600">
-                  {profile?.bio ||
-                    currentUser?.bio ||
-                    'Sin información de perfil. Agrega una descripción para generar más confianza en tus compras y ventas.'}
-                </p>
+                <div className="space-y-4">
+                  <p className="leading-relaxed text-slate-600">
+                    {profile?.bio ||
+                      currentUser?.bio ||
+                      'Sin información de perfil. Agrega una descripción para generar más confianza en tus compras y ventas.'}
+                  </p>
+
+                  <div className="grid gap-3 md:grid-cols-3">
+                    <div className="rounded-xl bg-slate-50 p-4">
+                      <p className="mb-1 text-xs uppercase tracking-wide text-slate-500">
+                        Nombre
+                      </p>
+                      <p className="font-semibold text-slate-950">
+                        {displayName}
+                      </p>
+                    </div>
+
+                    <div className="rounded-xl bg-slate-50 p-4">
+                      <p className="mb-1 text-xs uppercase tracking-wide text-slate-500">
+                        Correo
+                      </p>
+                      <p className="break-all font-semibold text-slate-950">
+                        {displayEmail || 'No registrado'}
+                      </p>
+                    </div>
+
+                    <div className="rounded-xl bg-slate-50 p-4">
+                      <p className="mb-1 text-xs uppercase tracking-wide text-slate-500">
+                        Teléfono
+                      </p>
+                      <p className="font-semibold text-slate-950">
+                        {displayPhone || 'No registrado'}
+                      </p>
+                    </div>
+                  </div>
+                </div>
               )}
             </CardContent>
           </Card>
 
           <Card className="h-fit rounded-2xl border-slate-200 bg-white shadow-sm">
             <CardHeader className="pb-3">
-              <CardTitle className="text-lg">Seguridad de cuenta</CardTitle>
-              <CardDescription>Estado actual de tu cuenta.</CardDescription>
+              <CardTitle className="text-lg">Contacto público</CardTitle>
+              <CardDescription>
+                Datos que aparecerán en tus publicaciones.
+              </CardDescription>
             </CardHeader>
 
             <CardContent className="space-y-3 pt-0">
               <div className="rounded-xl bg-slate-50 p-4">
-                <p className="mb-1 text-sm text-slate-500">Estado de identidad</p>
-                <div>{getVerificationBadge()}</div>
-              </div>
-
-              <div className="rounded-xl bg-slate-50 p-4">
-                <p className="mb-1 text-sm text-slate-500">Correo registrado</p>
-                <p className="flex items-center gap-2 break-all text-sm font-medium">
-                  <Mail className="h-4 w-4" />
-                  {displayEmail}
+                <p className="mb-1 text-sm text-slate-500">Nombre del vendedor</p>
+                <p className="flex items-center gap-2 text-sm font-medium">
+                  <User className="h-4 w-4" />
+                  {displayName}
                 </p>
               </div>
 
-              <div className="rounded-xl border border-blue-100 bg-blue-50/70 p-4 text-sm text-blue-700">
-                La Segunda protege el contacto entre comprador y vendedor mediante
-                chat interno seguro.
+              <div className="rounded-xl bg-slate-50 p-4">
+                <p className="mb-1 text-sm text-slate-500">Correo visible</p>
+                <p className="flex items-center gap-2 break-all text-sm font-medium">
+                  <Mail className="h-4 w-4" />
+                  {displayEmail || 'No registrado'}
+                </p>
               </div>
 
-              <Button variant="outline" className="w-full bg-white">
-                <ShieldCheck className="mr-2 h-4 w-4" />
-                Verificar identidad
+              <div className="rounded-xl bg-slate-50 p-4">
+                <p className="mb-1 text-sm text-slate-500">Teléfono visible</p>
+                <p className="flex items-center gap-2 text-sm font-medium">
+                  <Phone className="h-4 w-4" />
+                  {displayPhone || 'No registrado'}
+                </p>
+              </div>
+
+              <div className="rounded-xl border border-green-100 bg-green-50/70 p-4 text-sm text-green-800">
+                Modelo libre activo: tus compradores podrán ver estos datos y
+                contactarte sin pagar por desbloqueo.
+              </div>
+
+              <Button
+                variant="outline"
+                className="w-full bg-white"
+                onClick={() => setIsEditingBio(true)}
+              >
+                <Edit3 className="mr-2 h-4 w-4" />
+                Editar datos públicos
               </Button>
             </CardContent>
           </Card>
         </section>
 
-        {/* PUBLICACIONES + ESTADISTICAS + MEMBRESIA */}
+        {/* PUBLICACIONES + ESTADISTICAS */}
         <section className="mb-5 grid items-start gap-5 lg:grid-cols-3">
           <Card className="h-fit rounded-2xl border-slate-200 bg-white shadow-sm">
             <CardHeader className="pb-3">
@@ -1285,27 +1308,14 @@ export default function ProfilePage() {
                 </div>
               </div>
 
-              <div className="flex flex-col gap-3 sm:flex-row">
-                <Button
-                  className="w-full"
-                  disabled={!canPublish}
-                  onClick={() => {
-                    if (canPublish) {
-                      router.push('/seller/dashboard');
-                    }
-                  }}
-                >
-                  <PackagePlus className="mr-2 h-4 w-4" />
-                  Publicar artículo
-                </Button>
-
-                <Link href="/seller/membership" className="w-full">
-                  <Button variant="outline" className="w-full bg-white">
-                    <Lock className="mr-2 h-4 w-4" />
-                    Mejorar plan
-                  </Button>
-                </Link>
-              </div>
+              <Button
+                className="w-full"
+                disabled={!canPublish}
+                onClick={() => router.push('/seller/dashboard')}
+              >
+                <PackagePlus className="mr-2 h-4 w-4" />
+                Publicar artículo
+              </Button>
             </CardContent>
           </Card>
 
@@ -1338,23 +1348,24 @@ export default function ProfilePage() {
             </CardContent>
           </Card>
 
-          <Card className="h-fit rounded-2xl border-amber-100 bg-amber-50/70 shadow-sm">
+          <Card className="h-fit rounded-2xl border-blue-100 bg-blue-50/70 shadow-sm">
             <CardHeader className="pb-3">
-              <CardTitle className="text-lg">Vende más con membresía</CardTitle>
+              <CardTitle className="text-lg">Marketplace libre</CardTitle>
               <CardDescription>
-                Desbloquea más publicaciones y paga menos comisión.
+                Estrategia de crecimiento inicial.
               </CardDescription>
             </CardHeader>
 
             <CardContent className="pt-0">
-              <div className="space-y-2 text-sm text-amber-800">
-                <p>Plus: hasta 5 publicaciones y comisión 5%.</p>
-                <p>Premium: publicaciones ilimitadas y comisión 2%.</p>
+              <div className="space-y-2 text-sm text-blue-800">
+                <p>Contacto directo visible para compradores.</p>
+                <p>Registro gratuito entre usuarios.</p>
+                <p>Mayor velocidad para concretar ventas.</p>
               </div>
 
-              <Link href="/seller/membership">
-                <Button className="mt-5 w-full bg-amber-600 hover:bg-amber-700">
-                  Ver planes
+              <Link href="/products">
+                <Button className="mt-5 w-full">
+                  Ver productos públicos
                 </Button>
               </Link>
             </CardContent>
@@ -1374,173 +1385,6 @@ export default function ProfilePage() {
           </div>
         )}
 
-        {/* FORMULARIO EDITAR PRODUCTO */}
-        {editingProduct && (
-          <Card
-            id="editar-producto"
-            className="mb-5 rounded-2xl border-primary/20 bg-white shadow-sm"
-          >
-            <CardHeader>
-              <div className="flex items-start justify-between gap-4">
-                <div>
-                  <CardTitle>Editar producto publicado</CardTitle>
-                  <CardDescription>
-                    Cambia descripción, precio, foto, ciudad o estado del producto.
-                  </CardDescription>
-                </div>
-
-                <Button variant="ghost" size="icon" onClick={closeEditProduct}>
-                  <X className="h-4 w-4" />
-                </Button>
-              </div>
-            </CardHeader>
-
-            <CardContent className="space-y-5">
-              <div className="grid gap-5 lg:grid-cols-[220px_1fr]">
-                <div className="rounded-xl border bg-slate-50 p-3">
-                  <p className="mb-2 text-sm font-medium">Vista previa</p>
-
-                  <img
-                    src={
-                      isValidImageUrl(editImage)
-                        ? editImage
-                        : DEFAULT_PRODUCT_IMAGE
-                    }
-                    alt="Vista previa"
-                    className="h-40 w-full rounded-lg object-cover"
-                  />
-                </div>
-
-                <div className="grid gap-4 md:grid-cols-2">
-                  <div className="space-y-2 md:col-span-2">
-                    <label className="text-sm font-medium">
-                      Nombre del producto
-                    </label>
-                    <input
-                      value={editTitle}
-                      onChange={(event) => setEditTitle(event.target.value)}
-                      placeholder="Ejemplo: iPhone 12 Pro"
-                      className="w-full rounded-md border bg-background px-3 py-2 text-sm"
-                    />
-                  </div>
-
-                  <div className="space-y-2 md:col-span-2">
-                    <label className="text-sm font-medium">Descripción</label>
-                    <textarea
-                      value={editDescription}
-                      onChange={(event) => setEditDescription(event.target.value)}
-                      placeholder="Describe detalles, estado, accesorios, uso y condiciones..."
-                      className="min-h-24 w-full rounded-md border bg-background px-3 py-2 text-sm"
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium">Precio</label>
-                    <input
-                      type="number"
-                      value={editPrice}
-                      onChange={(event) => setEditPrice(event.target.value)}
-                      placeholder="Ejemplo: 900"
-                      className="w-full rounded-md border bg-background px-3 py-2 text-sm"
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium">Ciudad</label>
-                    <input
-                      value={editCity}
-                      onChange={(event) => setEditCity(event.target.value)}
-                      placeholder="Ejemplo: Lima"
-                      className="w-full rounded-md border bg-background px-3 py-2 text-sm"
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium">Estado físico</label>
-                    <select
-                      value={editCondition}
-                      onChange={(event) => setEditCondition(event.target.value)}
-                      className="w-full rounded-md border bg-background px-3 py-2 text-sm"
-                    >
-                      <option value="Nuevo">Nuevo</option>
-                      <option value="Como nuevo">Como nuevo</option>
-                      <option value="Bueno">Bueno</option>
-                      <option value="Regular">Regular</option>
-                    </select>
-                  </div>
-
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium">
-                      Estado de publicación
-                    </label>
-                    <select
-                      value={editStatus}
-                      onChange={(event) => setEditStatus(event.target.value)}
-                      className="w-full rounded-md border bg-background px-3 py-2 text-sm"
-                    >
-                      <option value="active">Activo</option>
-                      <option value="reserved">Reservado</option>
-                      <option value="sold">Vendido</option>
-                      <option value="pending">Pendiente</option>
-                      <option value="inactive">Inactivo</option>
-                    </select>
-                  </div>
-
-                  <div className="space-y-2 md:col-span-2">
-                    <label className="text-sm font-medium">
-                      Subir foto del producto
-                    </label>
-                    <input
-                      type="file"
-                      accept="image/*"
-                      onChange={handleUploadProductImage}
-                      disabled={isUploadingProductImage}
-                      className="w-full rounded-md border bg-background px-3 py-2 text-sm"
-                    />
-
-                    {isUploadingProductImage && (
-                      <p className="flex items-center gap-2 text-xs text-muted-foreground">
-                        <Loader2 className="h-3 w-3 animate-spin" />
-                        Subiendo imagen...
-                      </p>
-                    )}
-                  </div>
-
-                  <div className="space-y-2 md:col-span-2">
-                    <label className="text-sm font-medium">URL de imagen</label>
-                    <input
-                      value={editImage}
-                      onChange={(event) => setEditImage(event.target.value)}
-                      placeholder="https://images.unsplash.com/..."
-                      className="w-full rounded-md border bg-background px-3 py-2 text-sm"
-                    />
-                  </div>
-                </div>
-              </div>
-
-              <div className="flex flex-col gap-3 sm:flex-row">
-                <Button onClick={handleSaveProduct} disabled={isSavingProduct}>
-                  {isSavingProduct ? (
-                    <>
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      Guardando...
-                    </>
-                  ) : (
-                    <>
-                      <Save className="mr-2 h-4 w-4" />
-                      Guardar cambios
-                    </>
-                  )}
-                </Button>
-
-                <Button variant="outline" onClick={closeEditProduct}>
-                  Cancelar
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-        )}
-
         {/* MIS PRODUCTOS */}
         <Card className="mb-5 rounded-2xl border-slate-200 bg-white shadow-sm">
           <CardHeader className="pb-3">
@@ -1548,14 +1392,14 @@ export default function ProfilePage() {
               <div>
                 <CardTitle className="text-lg">Mis productos</CardTitle>
                 <CardDescription>
-                  Mis productos publicados en Supabase.
+                  Productos publicados desde tu cuenta.
                 </CardDescription>
               </div>
 
-              <Link href="/seller/membership">
-                <Button size="sm" className="bg-orange-600 hover:bg-orange-700">
-                  <Lock className="mr-2 h-4 w-4" />
-                  Plan
+              <Link href="/seller/dashboard">
+                <Button size="sm">
+                  <PackagePlus className="mr-2 h-4 w-4" />
+                  Publicar
                 </Button>
               </Link>
             </div>
@@ -1645,32 +1489,18 @@ export default function ProfilePage() {
                           </td>
 
                           <td className="px-2 py-3">
-                            <Badge
-                              className={
-                                status === 'active'
-                                  ? 'bg-blue-900 text-white'
-                                  : status === 'sold'
-                                    ? 'bg-slate-700 text-white'
-                                    : status === 'reserved'
-                                      ? 'bg-amber-100 text-amber-800'
-                                      : 'bg-slate-100 text-slate-700'
-                              }
-                            >
+                            <Badge className={getStatusBadgeClass(status)}>
                               {getStatusLabel(status)}
                             </Badge>
                           </td>
 
                           <td className="px-2 py-3">
                             <div className="flex items-center gap-2">
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                className="bg-white"
-                                onClick={() => openEditProduct(product)}
-                              >
-                                <Edit3 className="mr-2 h-4 w-4" />
-                                Editar
-                              </Button>
+                              <Link href={`/product/${product.id}`}>
+                                <Button size="sm" variant="outline" className="bg-white">
+                                  Ver
+                                </Button>
+                              </Link>
 
                               <Button
                                 size="sm"
@@ -1686,8 +1516,6 @@ export default function ProfilePage() {
                                 )}
                                 Eliminar
                               </Button>
-
-                              <MoreVertical className="h-4 w-4 text-slate-400" />
                             </div>
                           </td>
                         </tr>
