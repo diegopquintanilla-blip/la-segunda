@@ -1,422 +1,497 @@
 'use client';
 
 import { useState } from 'react';
-import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { useAuth } from '@/lib/auth-context';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
+import { useRouter } from 'next/navigation';
 import {
   AlertCircle,
-  ArrowLeft,
+  ArrowRight,
   CheckCircle,
+  Eye,
+  EyeOff,
   Loader2,
   Lock,
   Mail,
   MapPin,
+  Phone,
+  ShieldCheck,
+  Store,
   User,
-  Venus,
-  Mars,
-  CircleUserRound,
 } from 'lucide-react';
 
-type Gender = 'male' | 'female' | 'neutral';
+import { Header } from '@/components/header';
+import { supabase } from '@/lib/supabase/client';
+import { Button } from '@/components/ui/button';
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from '@/components/ui/card';
 
-const LOGO_SRC = '/lasegunda.png';
-
-function getRegisterErrorMessage(err: any) {
-  const rawMessage = String(
-    err?.message ||
-      err?.error_description ||
-      err?.error ||
-      err?.code ||
-      ''
-  ).toLowerCase();
-
-  const rawStatus = String(err?.status || '').toLowerCase();
-
-  if (
-    rawMessage.includes('email rate limit exceeded') ||
-    rawMessage.includes('over_email_send_rate_limit') ||
-    rawMessage.includes('rate limit') ||
-    rawMessage.includes('too many requests') ||
-    rawStatus === '429'
-  ) {
-    return 'Estamos recibiendo muchos registros en este momento. Espera unos minutos e intenta nuevamente.';
-  }
-
-  if (
-    rawMessage.includes('user already registered') ||
-    rawMessage.includes('already registered') ||
-    rawMessage.includes('already exists') ||
-    rawMessage.includes('email already')
-  ) {
-    return 'Este correo ya está registrado. Intenta iniciar sesión o usa otro correo.';
-  }
-
-  if (
-    rawMessage.includes('invalid email') ||
-    rawMessage.includes('signup requires a valid email')
-  ) {
-    return 'Ingresa un correo electrónico válido.';
-  }
-
-  if (
-    rawMessage.includes('password') &&
-    rawMessage.includes('weak')
-  ) {
-    return 'La contraseña es muy débil. Usa una contraseña más segura.';
-  }
-
-  if (
-    rawMessage.includes('network') ||
-    rawMessage.includes('failed to fetch')
-  ) {
-    return 'No se pudo conectar con el servidor. Revisa tu conexión e intenta nuevamente.';
-  }
-
-  return 'No se pudo crear la cuenta. Intenta nuevamente.';
-}
+type ProfilePayload = {
+  full_name: string;
+  email: string;
+  phone: string;
+  city: string;
+  bio: string;
+  gender: string;
+  account_type: string;
+  verification_status: string;
+  is_seller: boolean;
+  membership_type: string;
+  monthly_listing_limit: number;
+  rating: number;
+  review_count: number;
+};
 
 export default function RegisterPage() {
   const router = useRouter();
-  const { register } = useAuth();
 
-  const [name, setName] = useState('');
+  const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
+  const [phone, setPhone] = useState('');
+  const [city, setCity] = useState('');
+  const [gender, setGender] = useState('neutral');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
-  const [gender, setGender] = useState<Gender>('neutral');
-  const [city, setCity] = useState('');
 
-  const [error, setError] = useState('');
-  const [success, setSuccess] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [logoError, setLogoError] = useState(false);
 
-  const avatarPreview = {
-    male: '👨',
-    female: '👩',
-    neutral: '🙂',
+  const [errorMessage, setErrorMessage] = useState('');
+  const [successMessage, setSuccessMessage] = useState('');
+
+  const createProfile = async (userId: string, payload: ProfilePayload) => {
+    const byId = await supabase.from('profiles').upsert({
+      id: userId,
+      ...payload,
+    });
+
+    if (!byId.error) return;
+
+    const byUserId = await supabase.from('profiles').upsert({
+      user_id: userId,
+      ...payload,
+    });
+
+    if (byUserId.error) {
+      throw byUserId.error;
+    }
   };
 
-  const validateForm = () => {
-    const cleanEmail = email.trim().toLowerCase();
+  const handleRegister = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
 
-    if (!name.trim()) {
-      return 'Ingresa tu nombre completo.';
+    setErrorMessage('');
+    setSuccessMessage('');
+
+    if (!fullName.trim()) {
+      setErrorMessage('Ingresa tu nombre completo.');
+      return;
     }
 
-    if (!cleanEmail) {
-      return 'Ingresa tu correo electrónico.';
+    if (!email.trim()) {
+      setErrorMessage('Ingresa tu correo electrónico.');
+      return;
     }
 
-    if (!cleanEmail.includes('@') || !cleanEmail.includes('.')) {
-      return 'Ingresa un correo electrónico válido.';
+    if (!phone.trim()) {
+      setErrorMessage('Ingresa tu número de teléfono.');
+      return;
     }
 
-    if (!password) {
-      return 'Ingresa una contraseña.';
+    if (!city.trim()) {
+      setErrorMessage('Ingresa tu ciudad.');
+      return;
     }
 
     if (password.length < 6) {
-      return 'La contraseña debe tener al menos 6 caracteres.';
+      setErrorMessage('La contraseña debe tener mínimo 6 caracteres.');
+      return;
     }
 
     if (password !== confirmPassword) {
-      return 'Las contraseñas no coinciden.';
-    }
-
-    return '';
-  };
-
-  const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-
-    if (isSubmitting) return;
-
-    setError('');
-    setSuccess('');
-
-    const validationError = validateForm();
-
-    if (validationError) {
-      setError(validationError);
+      setErrorMessage('Las contraseñas no coinciden.');
       return;
     }
 
     setIsSubmitting(true);
 
     try {
-      await register(
-        name.trim(),
-        email.trim().toLowerCase(),
+      const { data, error } = await supabase.auth.signUp({
+        email: email.trim(),
         password,
+        options: {
+          data: {
+            full_name: fullName.trim(),
+            phone: phone.trim(),
+            city: city.trim(),
+            gender,
+          },
+        },
+      });
+
+      if (error) {
+        throw error;
+      }
+
+      if (!data.user) {
+        throw new Error('No se pudo crear el usuario. Intenta nuevamente.');
+      }
+
+      const profilePayload: ProfilePayload = {
+        full_name: fullName.trim(),
+        email: email.trim(),
+        phone: phone.trim(),
+        city: city.trim(),
+        bio: '',
         gender,
-        city.trim()
-      );
+        account_type: 'both',
+        verification_status: 'pending',
+        is_seller: true,
+        membership_type: 'free',
+        monthly_listing_limit: 2,
+        rating: 0,
+        review_count: 0,
+      };
 
-      setSuccess(
-        'Cuenta creada correctamente. Revisa tu correo para confirmar tu cuenta.'
-      );
+      try {
+        await createProfile(data.user.id, profilePayload);
+      } catch (profileError) {
+        console.warn('[La Segunda] Perfil pendiente de crear:', profileError);
+      }
 
-      window.setTimeout(() => {
-        router.push('/auth/login');
-      }, 1600);
-    } catch (err: any) {
-      setError(getRegisterErrorMessage(err));
+      const localUser = {
+        id: data.user.id,
+        email: email.trim(),
+        name: fullName.trim(),
+        full_name: fullName.trim(),
+        phone: phone.trim(),
+        city: city.trim(),
+        bio: '',
+        avatar: '',
+        gender,
+        accountType: 'both',
+      };
+
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('la-segunda-auth', 'true');
+        localStorage.setItem('la-segunda-user', JSON.stringify(localUser));
+      }
+
+      setSuccessMessage('Cuenta creada correctamente. Redirigiendo...');
+
+      setTimeout(() => {
+        router.push('/profile');
+        router.refresh();
+      }, 900);
+    } catch (error: any) {
+      console.error('[La Segunda] Error registrando usuario:', error?.message);
+
+      const message = String(error?.message || '').toLowerCase();
+
+      if (message.includes('already registered') || message.includes('already exists')) {
+        setErrorMessage('Este correo ya está registrado. Inicia sesión.');
+      } else if (message.includes('password')) {
+        setErrorMessage('La contraseña no cumple los requisitos mínimos.');
+      } else {
+        setErrorMessage(
+          error?.message || 'No se pudo crear la cuenta. Intenta nuevamente.'
+        );
+      }
+    } finally {
       setIsSubmitting(false);
     }
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 px-4 py-8">
-      <div className="mx-auto w-full max-w-2xl rounded-2xl border bg-white p-6 shadow-sm md:p-8">
-        <div className="mb-8 text-center">
-          <Link href="/" className="mx-auto mb-5 flex justify-center">
-            {!logoError ? (
-              <div className="flex h-20 w-[260px] items-center justify-center overflow-hidden rounded-xl bg-white">
-                <img
-                  src={LOGO_SRC}
-                  alt="La Segunda"
-                  onError={() => setLogoError(true)}
-                  className="h-full w-full object-cover object-center"
-                />
-              </div>
-            ) : (
-              <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-primary text-xl font-bold text-primary-foreground">
-                S
-              </div>
-            )}
-          </Link>
+    <div className="min-h-screen bg-[#F7F8FB] text-slate-950">
+      <Header />
 
-          <h1 className="text-3xl font-bold text-slate-950">
-            Crear cuenta
-          </h1>
-
-          <p className="mt-3 text-muted-foreground">
-            Regístrate en La Segunda para comprar, vender y publicar productos.
-          </p>
+      <main className="relative overflow-hidden px-4 py-10 md:py-16">
+        <div className="pointer-events-none absolute inset-0">
+          <div className="absolute -left-24 top-20 h-72 w-72 rounded-full bg-blue-100 blur-3xl" />
+          <div className="absolute -right-24 bottom-10 h-80 w-80 rounded-full bg-orange-100 blur-3xl" />
         </div>
 
-        <div className="mb-6 rounded-2xl border bg-white p-5 text-center">
-          <h2 className="mb-4 font-semibold">Avatar inicial</h2>
-
-          <div className="mx-auto mb-4 flex h-20 w-20 items-center justify-center rounded-full border-4 border-slate-200 bg-slate-100 text-4xl">
-            {avatarPreview[gender]}
-          </div>
-
-          <p className="text-sm text-muted-foreground">
-            Tu avatar se asignará según la opción seleccionada.
-          </p>
-        </div>
-
-        {error && (
-          <div className="mb-5 flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 p-4 text-red-700">
-            <AlertCircle className="mt-0.5 h-4 w-4 flex-shrink-0" />
-            <p className="text-sm">{error}</p>
-          </div>
-        )}
-
-        {success && (
-          <div className="mb-5 flex items-start gap-2 rounded-xl border border-green-200 bg-green-50 p-4 text-green-700">
-            <CheckCircle className="mt-0.5 h-4 w-4 flex-shrink-0" />
-            <p className="text-sm">{success}</p>
-          </div>
-        )}
-
-        <form onSubmit={handleSubmit} className="space-y-5">
-          <div className="space-y-2">
-            <label className="text-sm font-medium">Nombre completo</label>
-
-            <div className="relative">
-              <User className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-
-              <Input
-                value={name}
-                onChange={(event) => setName(event.target.value)}
-                placeholder="Ejemplo: Julio Diaz"
-                className="pl-9"
-                disabled={isSubmitting}
-                autoComplete="name"
-              />
+        <div className="relative mx-auto grid max-w-7xl items-center gap-10 lg:grid-cols-[1fr_500px]">
+          <section className="hidden lg:block">
+            <div className="mb-6 flex h-16 w-16 items-center justify-center rounded-3xl bg-blue-950 text-white shadow-xl">
+              <Store className="h-8 w-8" />
             </div>
-          </div>
 
-          <div className="space-y-2">
-            <label className="text-sm font-medium">Correo electrónico</label>
+            <h1 className="max-w-3xl text-5xl font-black leading-tight tracking-tight text-slate-950">
+              Crea tu cuenta y empieza a comprar o vender
+            </h1>
 
-            <div className="relative">
-              <Mail className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+            <p className="mt-5 max-w-2xl text-lg leading-relaxed text-slate-600">
+              Publica productos, muestra tus datos de contacto y permite que
+              compradores interesados se comuniquen contigo directamente.
+            </p>
 
-              <Input
-                type="email"
-                value={email}
-                onChange={(event) => setEmail(event.target.value)}
-                placeholder="correo@ejemplo.com"
-                className="pl-9"
-                disabled={isSubmitting}
-                autoComplete="email"
-                autoCapitalize="none"
-                autoCorrect="off"
-              />
+            <div className="mt-8 grid max-w-2xl gap-4 md:grid-cols-3">
+              <div className="rounded-3xl border bg-white p-5 shadow-sm">
+                <User className="mb-3 h-6 w-6 text-blue-950" />
+                <h3 className="font-black text-slate-950">Perfil público</h3>
+                <p className="mt-1 text-sm text-slate-500">
+                  Muestra nombre, ciudad y contacto.
+                </p>
+              </div>
+
+              <div className="rounded-3xl border bg-white p-5 shadow-sm">
+                <Phone className="mb-3 h-6 w-6 text-orange-600" />
+                <h3 className="font-black text-slate-950">Contacto directo</h3>
+                <p className="mt-1 text-sm text-slate-500">
+                  Facilita llamadas y WhatsApp.
+                </p>
+              </div>
+
+              <div className="rounded-3xl border bg-white p-5 shadow-sm">
+                <ShieldCheck className="mb-3 h-6 w-6 text-green-700" />
+                <h3 className="font-black text-slate-950">Más confianza</h3>
+                <p className="mt-1 text-sm text-slate-500">
+                  Datos claros para concretar ventas.
+                </p>
+              </div>
             </div>
-          </div>
+          </section>
 
-          <div className="grid gap-4 md:grid-cols-2">
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Contraseña</label>
+          <Card className="rounded-[2rem] border-slate-200 bg-white shadow-2xl">
+            <div className="h-3 rounded-t-[2rem] bg-gradient-to-r from-blue-950 via-blue-700 to-orange-500" />
 
-              <div className="relative">
-                <Lock className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+            <CardHeader className="px-6 pt-8 md:px-8">
+              <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-blue-50 text-blue-950">
+                <User className="h-7 w-7" />
+              </div>
 
-                <Input
-                  type="password"
-                  value={password}
-                  onChange={(event) => setPassword(event.target.value)}
-                  placeholder="••••••••"
-                  className="pl-9"
+              <CardTitle className="text-3xl font-black text-slate-950">
+                Crear cuenta
+              </CardTitle>
+
+              <CardDescription className="text-base">
+                Completa tus datos para publicar productos y recibir consultas.
+              </CardDescription>
+            </CardHeader>
+
+            <CardContent className="px-6 pb-8 md:px-8">
+              {errorMessage && (
+                <div className="mb-5 flex gap-2 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+                  <AlertCircle className="mt-0.5 h-4 w-4 flex-shrink-0" />
+                  <p>{errorMessage}</p>
+                </div>
+              )}
+
+              {successMessage && (
+                <div className="mb-5 flex gap-2 rounded-2xl border border-green-200 bg-green-50 p-4 text-sm text-green-700">
+                  <CheckCircle className="mt-0.5 h-4 w-4 flex-shrink-0" />
+                  <p>{successMessage}</p>
+                </div>
+              )}
+
+              <form onSubmit={handleRegister} className="space-y-5">
+                <div className="grid gap-4 md:grid-cols-2">
+                  <div className="space-y-2 md:col-span-2">
+                    <label className="text-sm font-semibold text-slate-700">
+                      Nombre completo
+                    </label>
+
+                    <div className="relative">
+                      <User className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" />
+
+                      <input
+                        value={fullName}
+                        onChange={(event) => setFullName(event.target.value)}
+                        placeholder="Ejemplo: Diego Palomino"
+                        className="h-12 w-full rounded-xl border border-slate-200 bg-slate-50 pl-12 pr-4 text-sm outline-none transition focus:border-blue-950 focus:bg-white focus:ring-2 focus:ring-blue-100"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="space-y-2 md:col-span-2">
+                    <label className="text-sm font-semibold text-slate-700">
+                      Correo electrónico
+                    </label>
+
+                    <div className="relative">
+                      <Mail className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" />
+
+                      <input
+                        type="email"
+                        value={email}
+                        onChange={(event) => setEmail(event.target.value)}
+                        placeholder="correo@ejemplo.com"
+                        className="h-12 w-full rounded-xl border border-slate-200 bg-slate-50 pl-12 pr-4 text-sm outline-none transition focus:border-blue-950 focus:bg-white focus:ring-2 focus:ring-blue-100"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="text-sm font-semibold text-slate-700">
+                      Teléfono
+                    </label>
+
+                    <div className="relative">
+                      <Phone className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" />
+
+                      <input
+                        value={phone}
+                        onChange={(event) => setPhone(event.target.value)}
+                        placeholder="929676542"
+                        className="h-12 w-full rounded-xl border border-slate-200 bg-slate-50 pl-12 pr-4 text-sm outline-none transition focus:border-blue-950 focus:bg-white focus:ring-2 focus:ring-blue-100"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="text-sm font-semibold text-slate-700">
+                      Ciudad
+                    </label>
+
+                    <div className="relative">
+                      <MapPin className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" />
+
+                      <input
+                        value={city}
+                        onChange={(event) => setCity(event.target.value)}
+                        placeholder="Lima"
+                        className="h-12 w-full rounded-xl border border-slate-200 bg-slate-50 pl-12 pr-4 text-sm outline-none transition focus:border-blue-950 focus:bg-white focus:ring-2 focus:ring-blue-100"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="space-y-2 md:col-span-2">
+                    <label className="text-sm font-semibold text-slate-700">
+                      Género para avatar
+                    </label>
+
+                    <select
+                      value={gender}
+                      onChange={(event) => setGender(event.target.value)}
+                      className="h-12 w-full rounded-xl border border-slate-200 bg-slate-50 px-4 text-sm outline-none transition focus:border-blue-950 focus:bg-white focus:ring-2 focus:ring-blue-100"
+                    >
+                      <option value="neutral">Neutral</option>
+                      <option value="male">Masculino</option>
+                      <option value="female">Femenino</option>
+                    </select>
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="text-sm font-semibold text-slate-700">
+                      Contraseña
+                    </label>
+
+                    <div className="relative">
+                      <Lock className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" />
+
+                      <input
+                        type={showPassword ? 'text' : 'password'}
+                        value={password}
+                        onChange={(event) => setPassword(event.target.value)}
+                        placeholder="Mínimo 6 caracteres"
+                        className="h-12 w-full rounded-xl border border-slate-200 bg-slate-50 pl-12 pr-12 text-sm outline-none transition focus:border-blue-950 focus:bg-white focus:ring-2 focus:ring-blue-100"
+                      />
+
+                      <button
+                        type="button"
+                        onClick={() => setShowPassword((value) => !value)}
+                        className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 transition hover:text-slate-700"
+                      >
+                        {showPassword ? (
+                          <EyeOff className="h-5 w-5" />
+                        ) : (
+                          <Eye className="h-5 w-5" />
+                        )}
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="text-sm font-semibold text-slate-700">
+                      Confirmar contraseña
+                    </label>
+
+                    <div className="relative">
+                      <Lock className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" />
+
+                      <input
+                        type={showConfirmPassword ? 'text' : 'password'}
+                        value={confirmPassword}
+                        onChange={(event) =>
+                          setConfirmPassword(event.target.value)
+                        }
+                        placeholder="Repite tu contraseña"
+                        className="h-12 w-full rounded-xl border border-slate-200 bg-slate-50 pl-12 pr-12 text-sm outline-none transition focus:border-blue-950 focus:bg-white focus:ring-2 focus:ring-blue-100"
+                      />
+
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setShowConfirmPassword((value) => !value)
+                        }
+                        className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 transition hover:text-slate-700"
+                      >
+                        {showConfirmPassword ? (
+                          <EyeOff className="h-5 w-5" />
+                        ) : (
+                          <Eye className="h-5 w-5" />
+                        )}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="rounded-3xl border border-blue-100 bg-blue-50/70 p-4 text-sm text-blue-900">
+                  <div className="mb-2 flex items-center gap-2 font-black">
+                    <ShieldCheck className="h-4 w-4" />
+                    Importante
+                  </div>
+
+                  <p className="leading-relaxed">
+                    Tu nombre, teléfono, correo y ciudad se usarán como datos de
+                    contacto en tus publicaciones.
+                  </p>
+                </div>
+
+                <Button
+                  type="submit"
                   disabled={isSubmitting}
-                  autoComplete="new-password"
-                />
+                  className="h-12 w-full rounded-xl bg-blue-950 text-base hover:bg-blue-900"
+                >
+                  {isSubmitting ? (
+                    <>
+                      <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+                      Creando cuenta...
+                    </>
+                  ) : (
+                    <>
+                      Crear cuenta
+                      <ArrowRight className="ml-2 h-5 w-5" />
+                    </>
+                  )}
+                </Button>
+              </form>
+
+              <div className="mt-6 rounded-3xl bg-slate-50 p-5 text-center">
+                <p className="text-sm text-slate-600">
+                  ¿Ya tienes una cuenta?
+                </p>
+
+                <Link href="/auth/login">
+                  <Button
+                    variant="outline"
+                    className="mt-3 h-11 w-full rounded-xl bg-white"
+                  >
+                    Iniciar sesión
+                  </Button>
+                </Link>
               </div>
-            </div>
-
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Confirmar contraseña</label>
-
-              <div className="relative">
-                <Lock className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-
-                <Input
-                  type="password"
-                  value={confirmPassword}
-                  onChange={(event) => setConfirmPassword(event.target.value)}
-                  placeholder="••••••••"
-                  className="pl-9"
-                  disabled={isSubmitting}
-                  autoComplete="new-password"
-                />
-              </div>
-            </div>
-          </div>
-
-          <div className="space-y-3">
-            <label className="text-sm font-medium">Género</label>
-
-            <div className="grid gap-3 md:grid-cols-3">
-              <button
-                type="button"
-                onClick={() => setGender('male')}
-                disabled={isSubmitting}
-                className={`rounded-xl border p-4 text-left transition ${
-                  gender === 'male'
-                    ? 'border-primary bg-primary/5 ring-2 ring-primary/20'
-                    : 'hover:bg-slate-50'
-                }`}
-              >
-                <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-full bg-slate-100 text-primary">
-                  <Mars className="h-5 w-5" />
-                </div>
-
-                <p className="font-semibold">Hombre</p>
-                <p className="mt-1 text-sm text-muted-foreground">
-                  Avatar masculino
-                </p>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setGender('female')}
-                disabled={isSubmitting}
-                className={`rounded-xl border p-4 text-left transition ${
-                  gender === 'female'
-                    ? 'border-primary bg-primary/5 ring-2 ring-primary/20'
-                    : 'hover:bg-slate-50'
-                }`}
-              >
-                <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-full bg-slate-100 text-primary">
-                  <Venus className="h-5 w-5" />
-                </div>
-
-                <p className="font-semibold">Mujer</p>
-                <p className="mt-1 text-sm text-muted-foreground">
-                  Avatar femenino
-                </p>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setGender('neutral')}
-                disabled={isSubmitting}
-                className={`rounded-xl border p-4 text-left transition ${
-                  gender === 'neutral'
-                    ? 'border-primary bg-primary/5 ring-2 ring-primary/20'
-                    : 'hover:bg-slate-50'
-                }`}
-              >
-                <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-full bg-primary text-primary-foreground">
-                  <CircleUserRound className="h-5 w-5" />
-                </div>
-
-                <p className="font-semibold">Prefiero no decirlo</p>
-                <p className="mt-1 text-sm text-muted-foreground">
-                  Avatar neutral
-                </p>
-              </button>
-            </div>
-          </div>
-
-          <div className="space-y-2">
-            <label className="text-sm font-medium">Ciudad opcional</label>
-
-            <div className="relative">
-              <MapPin className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-
-              <Input
-                value={city}
-                onChange={(event) => setCity(event.target.value)}
-                placeholder="Ejemplo: Lima"
-                className="pl-9"
-                disabled={isSubmitting}
-                autoComplete="address-level2"
-              />
-            </div>
-          </div>
-
-          <Button type="submit" className="w-full" disabled={isSubmitting}>
-            {isSubmitting ? (
-              <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Creando cuenta...
-              </>
-            ) : (
-              'Crear cuenta'
-            )}
-          </Button>
-        </form>
-
-        <div className="mt-6 border-t pt-6">
-          <p className="mb-4 text-center text-sm text-muted-foreground">
-            ¿Ya tienes cuenta?
-          </p>
-
-          <Link href="/auth/login">
-            <Button variant="outline" className="w-full">
-              Iniciar sesión
-            </Button>
-          </Link>
+            </CardContent>
+          </Card>
         </div>
-
-        <div className="mt-4">
-          <Link href="/">
-            <Button variant="ghost" className="w-full">
-              <ArrowLeft className="mr-2 h-4 w-4" />
-              Volver al inicio
-            </Button>
-          </Link>
-        </div>
-      </div>
+      </main>
     </div>
   );
 }
