@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import {
   AlertCircle,
+  ArrowRight,
   Calendar,
   Camera,
   CheckCircle,
@@ -38,32 +39,28 @@ import {
   CardTitle,
 } from '@/components/ui/card';
 
-// ============================================================
-// TIPOS
-// ============================================================
-
 type ProfileData = {
   id?: string | null;
   user_id?: string | null;
-  full_name: string | null;
-  username: string | null;
-  email: string | null;
-  phone: string | null;
-  city: string | null;
-  bio: string | null;
-  avatar_url: string | null;
-  gender: 'male' | 'female' | 'neutral' | string | null;
-  account_type: 'buyer' | 'seller' | 'both' | string | null;
-  verification_status: 'pending' | 'verified' | 'rejected' | string | null;
-  is_seller: boolean | null;
-  membership_type: string | null;
-  seller_badge: string | null;
-  subscription_status: string | null;
-  commission_rate: number | null;
-  monthly_listing_limit: number | null;
-  rating: number | null;
-  review_count: number | null;
-  created_at: string | null;
+  full_name?: string | null;
+  username?: string | null;
+  email?: string | null;
+  phone?: string | null;
+  city?: string | null;
+  bio?: string | null;
+  avatar_url?: string | null;
+  gender?: 'male' | 'female' | 'neutral' | string | null;
+  account_type?: 'buyer' | 'seller' | 'both' | string | null;
+  verification_status?: 'pending' | 'verified' | 'rejected' | string | null;
+  is_seller?: boolean | null;
+  membership_type?: string | null;
+  seller_badge?: string | null;
+  subscription_status?: string | null;
+  commission_rate?: number | null;
+  monthly_listing_limit?: number | null;
+  rating?: number | null;
+  review_count?: number | null;
+  created_at?: string | null;
 };
 
 type ProductRow = {
@@ -103,21 +100,8 @@ type ProductRow = {
   createdAt?: string | null;
 };
 
-// ============================================================
-// CONFIGURACIÓN
-// ============================================================
-
-const PLAN_LIMITS: Record<string, number> = {
-  free: 2,
-  plus: 5,
-  premium: Infinity,
-};
-
-const DEFAULT_PRODUCT_IMAGE = 'https://placehold.co/400x300?text=La+Segunda';
-
-// ============================================================
-// HELPERS
-// ============================================================
+const DEFAULT_PRODUCT_IMAGE = 'https://placehold.co/700x520?text=La+Segunda';
+const DEFAULT_AVATAR = 'https://placehold.co/180x180?text=LS';
 
 function isValidImageUrl(value?: string | null) {
   if (!value) return false;
@@ -226,25 +210,33 @@ function getProductStatus(product: ProductRow) {
 function getStatusLabel(status?: string | null) {
   const value = String(status || 'active').toLowerCase();
 
-  if (value === 'active') return 'Activo';
-  if (value === 'published') return 'Publicado';
+  if (value === 'active') return 'Disponible';
+  if (value === 'published') return 'Disponible';
   if (value === 'available') return 'Disponible';
   if (value === 'reserved') return 'Reservado';
   if (value === 'sold') return 'Vendido';
   if (value === 'pending') return 'Pendiente';
   if (value === 'inactive') return 'Inactivo';
 
-  return value;
+  return 'Disponible';
 }
 
-function getStatusBadgeClass(status?: string | null) {
+function getStatusClass(status?: string | null) {
   const value = String(status || 'active').toLowerCase();
 
-  if (value === 'reserved') return 'bg-amber-100 text-amber-800 hover:bg-amber-100';
-  if (value === 'sold') return 'bg-slate-700 text-white hover:bg-slate-700';
-  if (value === 'pending') return 'bg-slate-100 text-slate-700 hover:bg-slate-100';
+  if (value === 'reserved') {
+    return 'bg-amber-100 text-amber-800 hover:bg-amber-100';
+  }
 
-  return 'bg-blue-900 text-white hover:bg-blue-900';
+  if (value === 'sold') {
+    return 'bg-slate-700 text-white hover:bg-slate-700';
+  }
+
+  if (value === 'pending') {
+    return 'bg-slate-100 text-slate-700 hover:bg-slate-100';
+  }
+
+  return 'bg-blue-950 text-white hover:bg-blue-950';
 }
 
 function sortProductsByDate(products: ProductRow[]) {
@@ -256,9 +248,19 @@ function sortProductsByDate(products: ProductRow[]) {
   });
 }
 
-// ============================================================
-// COMPONENTE PRINCIPAL
-// ============================================================
+function formatDate(date?: string | null) {
+  if (!date) return 'Fecha no disponible';
+
+  try {
+    return new Date(date).toLocaleDateString('es-PE', {
+      day: '2-digit',
+      month: 'short',
+      year: 'numeric',
+    });
+  } catch {
+    return 'Fecha no disponible';
+  }
+}
 
 export default function ProfilePage() {
   const router = useRouter();
@@ -266,12 +268,10 @@ export default function ProfilePage() {
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
-  // ----------------------------------------------------------
-  // PERFIL
-  // ----------------------------------------------------------
+  const currentUser = user as any;
 
   const [profile, setProfile] = useState<ProfileData | null>(null);
-  const [isEditingBio, setIsEditingBio] = useState(false);
+  const [isEditingProfile, setIsEditingProfile] = useState(false);
 
   const [fullNameText, setFullNameText] = useState('');
   const [emailText, setEmailText] = useState('');
@@ -283,18 +283,10 @@ export default function ProfilePage() {
   const [profileMessage, setProfileMessage] = useState('');
   const [profileError, setProfileError] = useState('');
 
-  // ----------------------------------------------------------
-  // AVATAR
-  // ----------------------------------------------------------
-
   const [avatarLoadError, setAvatarLoadError] = useState(false);
   const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
   const [avatarMessage, setAvatarMessage] = useState('');
   const [avatarError, setAvatarError] = useState('');
-
-  // ----------------------------------------------------------
-  // PRODUCTOS
-  // ----------------------------------------------------------
 
   const [products, setProducts] = useState<ProductRow[]>([]);
   const [isLoadingProducts, setIsLoadingProducts] = useState(false);
@@ -304,23 +296,16 @@ export default function ProfilePage() {
     null
   );
 
-  // ============================================================
-  // FUNCIONES BASE
-  // ============================================================
-
-  const currentUser = user as any;
-
   const loadProfile = useCallback(async () => {
     if (!user?.id) return;
 
     setProfileError('');
 
     try {
-      const profileColumns = ['user_id', 'id'];
+      const columns = ['user_id', 'id'];
       let loadedProfile: ProfileData | null = null;
-      let lastErrorMessage = '';
 
-      for (const column of profileColumns) {
+      for (const column of columns) {
         const { data, error } = await supabase
           .from('profiles')
           .select('*')
@@ -331,18 +316,9 @@ export default function ProfilePage() {
           loadedProfile = data as ProfileData;
           break;
         }
-
-        if (error?.message) {
-          lastErrorMessage = error.message;
-        }
       }
 
       if (!loadedProfile) {
-        console.warn(
-          '[La Segunda] No se encontró perfil o no se pudo leer:',
-          lastErrorMessage
-        );
-
         setFullNameText(currentUser?.name || '');
         setEmailText(currentUser?.email || '');
         setPhoneText(currentUser?.phone || '');
@@ -359,52 +335,60 @@ export default function ProfilePage() {
       setBioText(loadedProfile.bio || currentUser?.bio || '');
       setAvatarLoadError(false);
     } catch (error: any) {
-      console.error('[La Segunda] Error cargando perfil:', error?.message);
       setProfileError(error?.message || 'No se pudo cargar el perfil.');
     }
-  }, [user?.id, currentUser?.name, currentUser?.email, currentUser?.phone, currentUser?.city, currentUser?.bio]);
+  }, [
+    user?.id,
+    currentUser?.name,
+    currentUser?.email,
+    currentUser?.phone,
+    currentUser?.city,
+    currentUser?.bio,
+  ]);
 
   const updateProfileInSupabase = async (payload: Record<string, any>) => {
     if (!user?.id) {
       throw new Error('Debes iniciar sesión para actualizar tu perfil.');
     }
 
-    const profileColumns = ['user_id', 'id'];
+    const columns = ['user_id', 'id'];
+    let updated = false;
     let lastError: any = null;
 
-    for (const column of profileColumns) {
+    for (const column of columns) {
       const { error } = await supabase
         .from('profiles')
         .update(payload)
         .eq(column, user.id);
 
       if (!error) {
-        return;
+        updated = true;
+        break;
       }
 
       lastError = error;
     }
 
-    const insertWithId = await supabase
+    if (updated) return;
+
+    const upsertById = await supabase
       .from('profiles')
       .upsert({
         id: user.id,
         ...payload,
       });
 
-    if (!insertWithId.error) {
-      return;
-    }
+    if (!upsertById.error) return;
 
-    const insertWithUserId = await supabase
+    const upsertByUserId = await supabase
       .from('profiles')
       .upsert({
         user_id: user.id,
         ...payload,
       });
 
-    if (insertWithUserId.error) {
-      throw lastError || insertWithUserId.error;
+    if (upsertByUserId.error) {
+      throw lastError || upsertByUserId.error;
     }
   };
 
@@ -418,7 +402,6 @@ export default function ProfilePage() {
       const ownerColumns = ['seller_id', 'user_id', 'owner_id'];
       const combinedProducts: ProductRow[] = [];
       let hadValidColumn = false;
-      let lastErrorMessage = '';
 
       for (const column of ownerColumns) {
         const { data, error } = await supabase
@@ -429,10 +412,6 @@ export default function ProfilePage() {
         if (!error && Array.isArray(data)) {
           hadValidColumn = true;
           combinedProducts.push(...(data as ProductRow[]));
-        }
-
-        if (error?.message) {
-          lastErrorMessage = error.message;
         }
       }
 
@@ -447,39 +426,25 @@ export default function ProfilePage() {
 
       const { data, error } = await supabase.from('products').select('*');
 
-      if (error) {
-        throw error;
-      }
+      if (error) throw error;
 
       const rows = Array.isArray(data) ? (data as ProductRow[]) : [];
 
       const filteredProducts = rows.filter((product) => {
         const ownerId = getProductOwnerId(product);
-
-        if (!ownerId) return false;
-
         return ownerId === user.id;
       });
 
       setProducts(sortProductsByDate(filteredProducts));
-
-      if (!hadValidColumn && lastErrorMessage) {
-        console.warn('[La Segunda] Columnas owner no detectadas:', lastErrorMessage);
-      }
     } catch (error: any) {
-      console.error('[La Segunda] Error cargando productos:', error?.message);
       setProducts([]);
       setProductError(
-        error?.message || 'No se pudieron cargar tus productos desde Supabase.'
+        error?.message || 'No se pudieron cargar tus publicaciones.'
       );
     } finally {
       setIsLoadingProducts(false);
     }
   }, [user?.id]);
-
-  // ============================================================
-  // EFECTOS
-  // ============================================================
 
   useEffect(() => {
     if (!isLoading && !isAuthenticated) {
@@ -494,10 +459,6 @@ export default function ProfilePage() {
     loadProducts();
   }, [isAuthenticated, user?.id, loadProfile, loadProducts]);
 
-  // ============================================================
-  // DATOS DERIVADOS
-  // ============================================================
-
   const displayName =
     profile?.full_name ||
     currentUser?.name ||
@@ -506,7 +467,11 @@ export default function ProfilePage() {
 
   const displayEmail = profile?.email || currentUser?.email || '';
   const displayPhone = profile?.phone || currentUser?.phone || '';
-  const displayCity = profile?.city || currentUser?.city || 'Lima';
+  const displayCity = profile?.city || currentUser?.city || 'Perú';
+  const displayBio =
+    profile?.bio ||
+    currentUser?.bio ||
+    'Completa tu descripción para generar mayor confianza en tus publicaciones.';
 
   const accountType = profile?.account_type || currentUser?.accountType || 'buyer';
 
@@ -573,20 +538,13 @@ export default function ProfilePage() {
   );
 
   const profileLimit = Number(profile?.monthly_listing_limit || 0);
-  const planLimit = PLAN_LIMITS[membershipType] ?? 2;
+  const planLimit = 2;
   const postingLimit = profileLimit > 0 ? profileLimit : planLimit;
 
-  const remainingPosts =
-    postingLimit === Infinity
-      ? Infinity
-      : Math.max(postingLimit - publishedProducts.length, 0);
+  const remainingPosts = Math.max(postingLimit - publishedProducts.length, 0);
+  const canPublish = remainingPosts > 0;
 
-  const canPublish =
-    remainingPosts === Infinity || Number(remainingPosts || 0) > 0;
-
-  // ============================================================
-  // FUNCIONES: AVATAR
-  // ============================================================
+  const hasPublicContact = Boolean(displayName && displayEmail && displayPhone);
 
   const handleSelectAvatar = () => {
     fileInputRef.current?.click();
@@ -642,40 +600,17 @@ export default function ProfilePage() {
         avatar_url: publicUrl,
       });
 
-      setProfile((currentProfile) => {
-        if (!currentProfile) {
-          return {
-            id: user.id,
-            user_id: user.id,
-            full_name: fullNameText,
-            username: null,
-            email: emailText,
-            phone: phoneText,
-            city: cityText,
-            bio: bioText,
-            avatar_url: publicUrl,
-            gender,
-            account_type: accountType,
-            verification_status: verificationStatus,
-            is_seller: null,
-            membership_type: membershipType,
-            seller_badge: null,
-            subscription_status: null,
-            commission_rate: null,
-            monthly_listing_limit: profileLimit || 2,
-            rating,
-            review_count: reviewCount,
-            created_at: null,
-          };
-        }
-
-        return { ...currentProfile, avatar_url: publicUrl };
-      });
+      setProfile((currentProfile) => ({
+        ...(currentProfile || {}),
+        id: currentProfile?.id || user.id,
+        user_id: currentProfile?.user_id || user.id,
+        avatar_url: publicUrl,
+      }));
 
       updateUser({ avatar: publicUrl } as any);
 
       setAvatarLoadError(false);
-      setAvatarMessage('Avatar actualizado correctamente.');
+      setAvatarMessage('Foto de perfil actualizada correctamente.');
     } catch (error: any) {
       setAvatarError(
         error?.message || 'No se pudo subir la imagen. Intenta nuevamente.'
@@ -688,10 +623,6 @@ export default function ProfilePage() {
       }
     }
   };
-
-  // ============================================================
-  // FUNCIONES: PERFIL
-  // ============================================================
 
   const handleSaveProfile = async () => {
     setProfileMessage('');
@@ -730,38 +661,12 @@ export default function ProfilePage() {
 
       await updateProfileInSupabase(payload);
 
-      setProfile((currentProfile) => {
-        if (!currentProfile) {
-          return {
-            id: user.id,
-            user_id: user.id,
-            full_name: payload.full_name,
-            username: null,
-            email: payload.email,
-            phone: payload.phone,
-            city: payload.city,
-            bio: payload.bio,
-            avatar_url: safeAvatarUrl || null,
-            gender,
-            account_type: accountType,
-            verification_status: verificationStatus,
-            is_seller: null,
-            membership_type: membershipType,
-            seller_badge: null,
-            subscription_status: null,
-            commission_rate: null,
-            monthly_listing_limit: profileLimit || 2,
-            rating,
-            review_count: reviewCount,
-            created_at: null,
-          };
-        }
-
-        return {
-          ...currentProfile,
-          ...payload,
-        };
-      });
+      setProfile((currentProfile) => ({
+        ...(currentProfile || {}),
+        id: currentProfile?.id || user.id,
+        user_id: currentProfile?.user_id || user.id,
+        ...payload,
+      }));
 
       updateUser({
         name: payload.full_name,
@@ -771,8 +676,8 @@ export default function ProfilePage() {
         bio: payload.bio,
       } as any);
 
-      setIsEditingBio(false);
-      setProfileMessage('Perfil actualizado correctamente. Tus datos ya serán visibles en tus productos.');
+      setIsEditingProfile(false);
+      setProfileMessage('Perfil actualizado correctamente.');
     } catch (error: any) {
       setProfileError(
         error?.message || 'No se pudo actualizar el perfil. Intenta nuevamente.'
@@ -783,7 +688,7 @@ export default function ProfilePage() {
   };
 
   const handleCancelEditProfile = () => {
-    setIsEditingBio(false);
+    setIsEditingProfile(false);
     setFullNameText(profile?.full_name || currentUser?.name || '');
     setEmailText(profile?.email || currentUser?.email || '');
     setPhoneText(profile?.phone || currentUser?.phone || '');
@@ -792,13 +697,9 @@ export default function ProfilePage() {
     setProfileError('');
   };
 
-  // ============================================================
-  // FUNCIONES: PRODUCTOS
-  // ============================================================
-
   const handleDeleteProduct = async (productId: string) => {
     const confirmed = window.confirm(
-      '¿Seguro que deseas eliminar este producto publicado?'
+      '¿Seguro que deseas eliminar esta publicación?'
     );
 
     if (!confirmed) return;
@@ -808,61 +709,31 @@ export default function ProfilePage() {
     setProductError('');
 
     try {
-      if (!user?.id) {
-        throw new Error('Debes iniciar sesión para eliminar productos.');
-      }
+      const { error } = await supabase
+        .from('products')
+        .delete()
+        .eq('id', productId);
 
-      const ownerColumns = ['seller_id', 'user_id', 'owner_id'];
-      let deleted = false;
-      let lastError: any = null;
+      if (error) throw error;
 
-      for (const column of ownerColumns) {
-        const { data, error } = await supabase
-          .from('products')
-          .delete()
-          .eq('id', productId)
-          .eq(column, user.id)
-          .select('id')
-          .maybeSingle();
+      setProducts((currentProducts) =>
+        currentProducts.filter((product) => product.id !== productId)
+      );
 
-        if (!error && data) {
-          deleted = true;
-          break;
-        }
-
-        if (error) {
-          lastError = error;
-        }
-      }
-
-      if (!deleted) {
-        const { error } = await supabase.from('products').delete().eq('id', productId);
-
-        if (error) {
-          throw lastError || error;
-        }
-      }
-
-      await loadProducts();
-
-      setProductMessage('Producto eliminado correctamente.');
+      setProductMessage('Publicación eliminada correctamente.');
     } catch (error: any) {
       setProductError(
-        error?.message || 'No se pudo eliminar el producto en Supabase.'
+        error?.message || 'No se pudo eliminar la publicación.'
       );
     } finally {
       setIsDeletingProductId(null);
     }
   };
 
-  // ============================================================
-  // BADGES
-  // ============================================================
-
   const getVerificationBadge = () => {
     if (verificationStatus === 'verified') {
       return (
-        <Badge className="border-green-200 bg-green-50 text-green-700">
+        <Badge className="border-green-200 bg-green-50 text-green-700 hover:bg-green-50">
           <ShieldCheck className="mr-1 h-3 w-3" />
           Verificado
         </Badge>
@@ -871,7 +742,7 @@ export default function ProfilePage() {
 
     if (verificationStatus === 'rejected') {
       return (
-        <Badge className="border-red-200 bg-red-50 text-red-700">
+        <Badge className="border-red-200 bg-red-50 text-red-700 hover:bg-red-50">
           <AlertCircle className="mr-1 h-3 w-3" />
           Rechazado
         </Badge>
@@ -879,9 +750,9 @@ export default function ProfilePage() {
     }
 
     return (
-      <Badge className="border-amber-200 bg-amber-50 text-amber-700">
+      <Badge className="border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-50">
         <AlertCircle className="mr-1 h-3 w-3" />
-        Verificación pendiente
+        Pendiente
       </Badge>
     );
   };
@@ -889,198 +760,192 @@ export default function ProfilePage() {
   const getPlanBadge = () => {
     if (membershipType === 'premium') {
       return (
-        <Badge className="border-amber-200 bg-amber-50 text-amber-700">
-          Plan Premium
+        <Badge className="border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-50">
+          Premium
         </Badge>
       );
     }
 
     if (membershipType === 'plus') {
       return (
-        <Badge className="border-blue-200 bg-blue-50 text-blue-700">
-          Plan Plus
+        <Badge className="border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-50">
+          Plus
         </Badge>
       );
     }
 
     return (
-      <Badge className="border-slate-200 bg-slate-50 text-slate-700">
-        Plan Gratis
+      <Badge className="border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-50">
+        Básico
       </Badge>
     );
   };
-
-  // ============================================================
-  // LOADING
-  // ============================================================
 
   if (isLoading || !isAuthenticated || !user) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-[#F7F8FB]">
         <div className="text-center">
-          <Loader2 className="mx-auto mb-3 h-8 w-8 animate-spin text-primary" />
-          <p className="text-sm text-muted-foreground">Cargando perfil...</p>
+          <Loader2 className="mx-auto mb-3 h-8 w-8 animate-spin text-blue-950" />
+          <p className="text-sm text-slate-500">Cargando perfil...</p>
         </div>
       </div>
     );
   }
 
-  // ============================================================
-  // RENDER
-  // ============================================================
-
   return (
-    <div className="min-h-screen bg-[#F7F8FB]">
+    <div className="min-h-screen bg-[#F7F8FB] text-slate-950">
       <Header />
 
-      <main className="mx-auto max-w-7xl px-4 py-5">
-        {/* HEADER DE PERFIL */}
-        <Card className="mb-5 overflow-hidden rounded-2xl border-slate-200 bg-white shadow-sm">
-          <CardContent className="p-0">
-            <div className="h-20 bg-gradient-to-r from-slate-100 via-blue-50 to-indigo-100" />
+      <main className="mx-auto max-w-7xl px-4 py-6">
+        {/* HERO PERFIL */}
+        <section className="mb-6 overflow-hidden rounded-[2rem] bg-gradient-to-br from-slate-950 via-blue-950 to-slate-900 text-white shadow-xl">
+          <div className="h-3 bg-gradient-to-r from-blue-700 via-blue-500 to-orange-500" />
 
-            <div className="px-5 pb-5">
-              <div className="-mt-10 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-                <div className="flex flex-col gap-4 sm:flex-row sm:items-end">
-                  <div className="relative h-24 w-24 flex-shrink-0">
-                    <div className="flex h-24 w-24 items-center justify-center overflow-hidden rounded-full border-4 border-white bg-slate-100 shadow-md">
-                      {shouldShowImageAvatar ? (
-                        <img
-                          src={safeAvatarUrl}
-                          alt="Avatar del usuario"
-                          className="block h-full w-full object-cover"
-                          onError={() => setAvatarLoadError(true)}
-                        />
-                      ) : (
-                        <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-slate-100 to-slate-200">
-                          <span className="select-none text-5xl leading-none">
-                            {getAvatarEmoji(gender)}
-                          </span>
-                        </div>
-                      )}
-                    </div>
-
-                    <button
-                      type="button"
-                      onClick={handleSelectAvatar}
-                      disabled={isUploadingAvatar}
-                      className="absolute bottom-1 right-1 flex h-8 w-8 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-md transition hover:bg-primary/90 disabled:opacity-60"
-                    >
-                      {isUploadingAvatar ? (
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                      ) : (
-                        <Camera className="h-4 w-4" />
-                      )}
-                    </button>
-
-                    <input
-                      ref={fileInputRef}
-                      type="file"
-                      accept="image/*"
-                      className="hidden"
-                      onChange={handleUploadAvatar}
-                    />
-                  </div>
-
-                  <div className="pb-1">
-                    <div className="mb-2 flex flex-wrap items-center gap-2">
-                      <h1 className="text-2xl font-bold leading-tight text-slate-950 md:text-3xl">
-                        {displayName}
-                      </h1>
-
-                      {getVerificationBadge()}
-                      {getPlanBadge()}
-                    </div>
-
-                    <div className="mb-2 flex flex-wrap gap-2">
-                      <Badge variant="outline" className="gap-1 bg-white text-xs">
-                        <MapPin className="h-3 w-3" />
-                        {displayCity}
-                      </Badge>
-
-                      <Badge variant="outline" className="gap-1 bg-white text-xs">
-                        <User className="h-3 w-3" />
-                        {getAccountTypeLabel(accountType)}
-                      </Badge>
-
-                      <Badge variant="outline" className="gap-1 bg-white text-xs">
-                        <Calendar className="h-3 w-3" />
-                        Miembro desde{' '}
-                        {profile?.created_at
-                          ? new Date(profile.created_at).toLocaleDateString(
-                              'es-PE',
-                              {
-                                month: 'long',
-                                year: 'numeric',
-                              }
-                            )
-                          : currentUser?.joinDate || '2026'}
-                      </Badge>
-                    </div>
-
-                    <div className="flex items-center gap-2 text-sm text-slate-500">
-                      <Star className="h-4 w-4 fill-yellow-400 text-yellow-400" />
-                      <span className="font-semibold text-slate-900">
-                        {rating}
+          <div className="p-6 md:p-10">
+            <div className="grid gap-8 lg:grid-cols-[1fr_360px] lg:items-end">
+              <div className="flex flex-col gap-5 md:flex-row md:items-end">
+                <div className="relative h-28 w-28 flex-shrink-0">
+                  <div className="flex h-28 w-28 items-center justify-center overflow-hidden rounded-[2rem] border-4 border-white/20 bg-white/10 shadow-xl backdrop-blur">
+                    {shouldShowImageAvatar ? (
+                      <img
+                        src={safeAvatarUrl}
+                        alt="Foto de perfil"
+                        className="h-full w-full object-cover"
+                        onError={() => setAvatarLoadError(true)}
+                      />
+                    ) : (
+                      <span className="text-5xl">
+                        {getAvatarEmoji(gender)}
                       </span>
-                      <span>({reviewCount} calificaciones)</span>
-                    </div>
+                    )}
                   </div>
-                </div>
 
-                <div className="flex flex-col gap-2 sm:flex-row">
-                  <Button
-                    variant="outline"
-                    size="sm"
+                  <button
+                    type="button"
                     onClick={handleSelectAvatar}
                     disabled={isUploadingAvatar}
-                    className="bg-white"
+                    className="absolute -bottom-2 -right-2 flex h-10 w-10 items-center justify-center rounded-2xl bg-orange-600 text-white shadow-lg transition hover:bg-orange-700 disabled:opacity-60"
                   >
-                    <Upload className="mr-2 h-4 w-4" />
-                    Cambiar avatar
-                  </Button>
+                    {isUploadingAvatar ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Camera className="h-4 w-4" />
+                    )}
+                  </button>
 
-                  <Button size="sm" onClick={() => setIsEditingBio(!isEditingBio)}>
-                    <Edit3 className="mr-2 h-4 w-4" />
-                    Editar perfil
-                  </Button>
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={handleUploadAvatar}
+                  />
+                </div>
+
+                <div>
+                  <div className="mb-3 flex flex-wrap items-center gap-2">
+                    {getVerificationBadge()}
+                    {getPlanBadge()}
+                  </div>
+
+                  <h1 className="text-3xl font-black leading-tight md:text-5xl">
+                    {displayName}
+                  </h1>
+
+                  <p className="mt-3 max-w-2xl text-slate-200">
+                    {displayBio}
+                  </p>
+
+                  <div className="mt-4 flex flex-wrap gap-2 text-sm text-slate-200">
+                    <span className="inline-flex items-center gap-1 rounded-full bg-white/10 px-3 py-1">
+                      <MapPin className="h-4 w-4" />
+                      {displayCity}
+                    </span>
+
+                    <span className="inline-flex items-center gap-1 rounded-full bg-white/10 px-3 py-1">
+                      <User className="h-4 w-4" />
+                      {getAccountTypeLabel(accountType)}
+                    </span>
+
+                    <span className="inline-flex items-center gap-1 rounded-full bg-white/10 px-3 py-1">
+                      <Star className="h-4 w-4 fill-yellow-400 text-yellow-400" />
+                      {rating} / {reviewCount} reseñas
+                    </span>
+                  </div>
                 </div>
               </div>
 
-              {avatarMessage && (
-                <div className="mt-4 flex items-center gap-2 rounded-xl border border-green-200 bg-green-50 p-3 text-sm text-green-700">
-                  <CheckCircle className="h-4 w-4" />
-                  {avatarMessage}
-                </div>
-              )}
+              <div className="rounded-3xl border border-white/10 bg-white/10 p-5 backdrop-blur">
+                <p className="mb-4 text-sm font-medium text-slate-200">
+                  Resumen de actividad
+                </p>
 
-              {avatarError && (
-                <div className="mt-4 flex items-center gap-2 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">
-                  <AlertCircle className="h-4 w-4" />
-                  {avatarError}
+                <div className="grid grid-cols-3 gap-3 text-center">
+                  <div className="rounded-2xl bg-white/10 p-4">
+                    <p className="text-2xl font-black">
+                      {publishedProducts.length}
+                    </p>
+                    <p className="mt-1 text-xs text-slate-300">Publicados</p>
+                  </div>
+
+                  <div className="rounded-2xl bg-white/10 p-4">
+                    <p className="text-2xl font-black">{totalViews}</p>
+                    <p className="mt-1 text-xs text-slate-300">Vistas</p>
+                  </div>
+
+                  <div className="rounded-2xl bg-white/10 p-4">
+                    <p className="text-2xl font-black">{totalFavorites}</p>
+                    <p className="mt-1 text-xs text-slate-300">Favoritos</p>
+                  </div>
                 </div>
-              )}
+
+                <Button
+                  className="mt-4 h-11 w-full rounded-xl bg-orange-600 hover:bg-orange-700"
+                  onClick={() => setIsEditingProfile(true)}
+                >
+                  <Edit3 className="mr-2 h-4 w-4" />
+                  Editar perfil
+                </Button>
+              </div>
             </div>
-          </CardContent>
-        </Card>
+          </div>
+        </section>
 
-        {/* PERFIL + CONTACTO */}
-        <section className="mb-5 grid items-start gap-5 lg:grid-cols-[1fr_380px]">
-          <Card className="h-fit rounded-2xl border-slate-200 bg-white shadow-sm">
-            <CardHeader className="pb-3">
-              <div className="flex items-center justify-between gap-3">
+        {avatarMessage && (
+          <div className="mb-5 flex items-center gap-2 rounded-2xl border border-green-200 bg-green-50 p-4 text-sm text-green-700">
+            <CheckCircle className="h-4 w-4" />
+            {avatarMessage}
+          </div>
+        )}
+
+        {avatarError && (
+          <div className="mb-5 flex items-center gap-2 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+            <AlertCircle className="h-4 w-4" />
+            {avatarError}
+          </div>
+        )}
+
+        {/* PERFIL Y CONTACTO */}
+        <section className="mb-6 grid items-start gap-6 lg:grid-cols-[1fr_390px]">
+          <Card className="rounded-[2rem] border-slate-200 bg-white shadow-sm">
+            <CardHeader>
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                 <div>
-                  <CardTitle className="text-lg">Sobre mí</CardTitle>
+                  <CardTitle className="text-2xl font-black text-slate-950">
+                    Perfil público
+                  </CardTitle>
+
                   <CardDescription>
-                    Información pública visible para compradores y vendedores.
+                    Estos datos ayudan a que los compradores confíen y puedan
+                    contactarte.
                   </CardDescription>
                 </div>
 
-                {!isEditingBio && (
+                {!isEditingProfile && (
                   <Button
                     variant="outline"
-                    size="sm"
-                    onClick={() => setIsEditingBio(true)}
+                    className="rounded-xl bg-white"
+                    onClick={() => setIsEditingProfile(true)}
                   >
                     <Edit3 className="mr-2 h-4 w-4" />
                     Editar
@@ -1089,132 +954,162 @@ export default function ProfilePage() {
               </div>
             </CardHeader>
 
-            <CardContent className="pt-0">
+            <CardContent>
               {profileMessage && (
-                <div className="mb-4 rounded-xl border border-green-200 bg-green-50 p-3 text-sm text-green-700">
+                <div className="mb-5 rounded-2xl border border-green-200 bg-green-50 p-4 text-sm text-green-700">
                   {profileMessage}
                 </div>
               )}
 
               {profileError && (
-                <div className="mb-4 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+                <div className="mb-5 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
                   {profileError}
                 </div>
               )}
 
-              {isEditingBio ? (
-                <div className="space-y-4">
+              {isEditingProfile ? (
+                <div className="space-y-5">
                   <div className="grid gap-4 md:grid-cols-2">
                     <div className="space-y-2">
-                      <label className="text-sm font-medium">Nombre visible</label>
+                      <label className="text-sm font-semibold text-slate-700">
+                        Nombre visible
+                      </label>
+
                       <input
                         value={fullNameText}
                         onChange={(event) => setFullNameText(event.target.value)}
                         placeholder="Ejemplo: Diego Palomino"
-                        className="w-full rounded-md border bg-background px-3 py-2 text-sm"
+                        className="h-12 w-full rounded-xl border border-slate-200 bg-slate-50 px-4 text-sm outline-none transition focus:border-blue-950 focus:bg-white focus:ring-2 focus:ring-blue-100"
                       />
                     </div>
 
                     <div className="space-y-2">
-                      <label className="text-sm font-medium">Ciudad</label>
+                      <label className="text-sm font-semibold text-slate-700">
+                        Ciudad
+                      </label>
+
                       <input
                         value={cityText}
                         onChange={(event) => setCityText(event.target.value)}
                         placeholder="Ejemplo: Lima"
-                        className="w-full rounded-md border bg-background px-3 py-2 text-sm"
+                        className="h-12 w-full rounded-xl border border-slate-200 bg-slate-50 px-4 text-sm outline-none transition focus:border-blue-950 focus:bg-white focus:ring-2 focus:ring-blue-100"
                       />
                     </div>
 
                     <div className="space-y-2">
-                      <label className="text-sm font-medium">Correo visible</label>
+                      <label className="text-sm font-semibold text-slate-700">
+                        Correo visible
+                      </label>
+
                       <input
                         type="email"
                         value={emailText}
                         onChange={(event) => setEmailText(event.target.value)}
                         placeholder="Ejemplo: vendedor@email.com"
-                        className="w-full rounded-md border bg-background px-3 py-2 text-sm"
+                        className="h-12 w-full rounded-xl border border-slate-200 bg-slate-50 px-4 text-sm outline-none transition focus:border-blue-950 focus:bg-white focus:ring-2 focus:ring-blue-100"
                       />
                     </div>
 
                     <div className="space-y-2">
-                      <label className="text-sm font-medium">Teléfono visible</label>
+                      <label className="text-sm font-semibold text-slate-700">
+                        Teléfono visible
+                      </label>
+
                       <input
                         value={phoneText}
                         onChange={(event) => setPhoneText(event.target.value)}
                         placeholder="Ejemplo: 929676542"
-                        className="w-full rounded-md border bg-background px-3 py-2 text-sm"
+                        className="h-12 w-full rounded-xl border border-slate-200 bg-slate-50 px-4 text-sm outline-none transition focus:border-blue-950 focus:bg-white focus:ring-2 focus:ring-blue-100"
                       />
                     </div>
                   </div>
 
                   <div className="space-y-2">
-                    <label className="text-sm font-medium">Descripción</label>
+                    <label className="text-sm font-semibold text-slate-700">
+                      Descripción
+                    </label>
+
                     <textarea
                       value={bioText}
                       onChange={(event) => setBioText(event.target.value)}
-                      placeholder="Cuenta algo sobre ti, qué vendes o qué tipo de productos buscas..."
-                      className="min-h-24 w-full rounded-md border bg-background px-3 py-2 text-sm"
+                      placeholder="Cuenta qué vendes, dónde entregas o qué tipo de productos publicas..."
+                      className="min-h-32 w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none transition focus:border-blue-950 focus:bg-white focus:ring-2 focus:ring-blue-100"
                     />
                   </div>
 
-                  <div className="rounded-xl border border-blue-100 bg-blue-50/70 p-4 text-sm text-blue-800">
-                    Estos datos serán visibles en tus productos para que los
-                    compradores puedan contactarte directamente.
+                  <div className="rounded-3xl border border-blue-100 bg-blue-50/70 p-4 text-sm text-blue-900">
+                    Tus compradores verán tu nombre, teléfono, correo y ciudad
+                    en el detalle de tus publicaciones.
                   </div>
 
                   <div className="flex flex-col gap-3 sm:flex-row">
-                    <Button onClick={handleSaveProfile} disabled={isSavingProfile}>
+                    <Button
+                      onClick={handleSaveProfile}
+                      disabled={isSavingProfile}
+                      className="h-12 rounded-xl bg-blue-950 px-6 text-base hover:bg-blue-900"
+                    >
                       {isSavingProfile ? (
                         <>
-                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          <Loader2 className="mr-2 h-5 w-5 animate-spin" />
                           Guardando...
                         </>
                       ) : (
                         <>
-                          <Save className="mr-2 h-4 w-4" />
+                          <Save className="mr-2 h-5 w-5" />
                           Guardar cambios
                         </>
                       )}
                     </Button>
 
-                    <Button variant="outline" onClick={handleCancelEditProfile}>
+                    <Button
+                      variant="outline"
+                      className="h-12 rounded-xl bg-white px-6 text-base"
+                      onClick={handleCancelEditProfile}
+                    >
                       <X className="mr-2 h-4 w-4" />
                       Cancelar
                     </Button>
                   </div>
                 </div>
               ) : (
-                <div className="space-y-4">
-                  <p className="leading-relaxed text-slate-600">
-                    {profile?.bio ||
-                      currentUser?.bio ||
-                      'Sin información de perfil. Agrega una descripción para generar más confianza en tus compras y ventas.'}
-                  </p>
+                <div className="space-y-5">
+                  <div className="rounded-3xl bg-slate-50 p-5">
+                    <h3 className="mb-2 text-lg font-black text-slate-950">
+                      Sobre mí
+                    </h3>
 
-                  <div className="grid gap-3 md:grid-cols-3">
-                    <div className="rounded-xl bg-slate-50 p-4">
-                      <p className="mb-1 text-xs uppercase tracking-wide text-slate-500">
+                    <p className="leading-relaxed text-slate-600">
+                      {displayBio}
+                    </p>
+                  </div>
+
+                  <div className="grid gap-4 md:grid-cols-3">
+                    <div className="rounded-3xl border bg-white p-5">
+                      <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">
                         Nombre
                       </p>
-                      <p className="font-semibold text-slate-950">
+
+                      <p className="font-black text-slate-950">
                         {displayName}
                       </p>
                     </div>
 
-                    <div className="rounded-xl bg-slate-50 p-4">
-                      <p className="mb-1 text-xs uppercase tracking-wide text-slate-500">
+                    <div className="rounded-3xl border bg-white p-5">
+                      <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">
                         Correo
                       </p>
-                      <p className="break-all font-semibold text-slate-950">
+
+                      <p className="break-all font-black text-slate-950">
                         {displayEmail || 'No registrado'}
                       </p>
                     </div>
 
-                    <div className="rounded-xl bg-slate-50 p-4">
-                      <p className="mb-1 text-xs uppercase tracking-wide text-slate-500">
+                    <div className="rounded-3xl border bg-white p-5">
+                      <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">
                         Teléfono
                       </p>
-                      <p className="font-semibold text-slate-950">
+
+                      <p className="font-black text-slate-950">
                         {displayPhone || 'No registrado'}
                       </p>
                     </div>
@@ -1224,341 +1119,317 @@ export default function ProfilePage() {
             </CardContent>
           </Card>
 
-          <Card className="h-fit rounded-2xl border-slate-200 bg-white shadow-sm">
-            <CardHeader className="pb-3">
-              <CardTitle className="text-lg">Contacto público</CardTitle>
-              <CardDescription>
-                Datos que aparecerán en tus publicaciones.
-              </CardDescription>
-            </CardHeader>
+          <aside className="space-y-5">
+            <Card className="rounded-[2rem] border-slate-200 bg-white shadow-sm">
+              <CardHeader>
+                <CardTitle className="text-xl font-black text-slate-950">
+                  Datos de contacto
+                </CardTitle>
 
-            <CardContent className="space-y-3 pt-0">
-              <div className="rounded-xl bg-slate-50 p-4">
-                <p className="mb-1 text-sm text-slate-500">Nombre del vendedor</p>
-                <p className="flex items-center gap-2 text-sm font-medium">
-                  <User className="h-4 w-4" />
-                  {displayName}
-                </p>
-              </div>
+                <CardDescription>
+                  Información que aparece en tus productos.
+                </CardDescription>
+              </CardHeader>
 
-              <div className="rounded-xl bg-slate-50 p-4">
-                <p className="mb-1 text-sm text-slate-500">Correo visible</p>
-                <p className="flex items-center gap-2 break-all text-sm font-medium">
-                  <Mail className="h-4 w-4" />
-                  {displayEmail || 'No registrado'}
-                </p>
-              </div>
-
-              <div className="rounded-xl bg-slate-50 p-4">
-                <p className="mb-1 text-sm text-slate-500">Teléfono visible</p>
-                <p className="flex items-center gap-2 text-sm font-medium">
-                  <Phone className="h-4 w-4" />
-                  {displayPhone || 'No registrado'}
-                </p>
-              </div>
-
-              <div className="rounded-xl border border-green-100 bg-green-50/70 p-4 text-sm text-green-800">
-                Modelo libre activo: tus compradores podrán ver estos datos y
-                contactarte sin pagar por desbloqueo.
-              </div>
-
-              <Button
-                variant="outline"
-                className="w-full bg-white"
-                onClick={() => setIsEditingBio(true)}
-              >
-                <Edit3 className="mr-2 h-4 w-4" />
-                Editar datos públicos
-              </Button>
-            </CardContent>
-          </Card>
-        </section>
-
-        {/* PUBLICACIONES + ESTADISTICAS */}
-        <section className="mb-5 grid items-start gap-5 lg:grid-cols-3">
-          <Card className="h-fit rounded-2xl border-slate-200 bg-white shadow-sm">
-            <CardHeader className="pb-3">
-              <CardTitle className="text-lg">Publicaciones disponibles</CardTitle>
-              <CardDescription>
-                Controla cuántos artículos puedes publicar.
-              </CardDescription>
-            </CardHeader>
-
-            <CardContent className="space-y-4 pt-0">
-              <div className="grid grid-cols-3 gap-3">
-                <div className="rounded-xl bg-slate-50 p-3">
-                  <p className="text-xs text-slate-500">Publicados</p>
-                  <p className="text-2xl font-bold">
-                    {publishedProducts.length}
+              <CardContent className="space-y-3">
+                <div className="rounded-3xl bg-slate-50 p-4">
+                  <p className="mb-1 text-sm text-slate-500">Nombre</p>
+                  <p className="flex items-center gap-2 font-semibold text-slate-950">
+                    <User className="h-4 w-4 text-blue-950" />
+                    {displayName}
                   </p>
                 </div>
 
-                <div className="rounded-xl bg-slate-50 p-3">
-                  <p className="text-xs text-slate-500">Límite</p>
-                  <p className="text-2xl font-bold">
-                    {postingLimit === Infinity ? '∞' : postingLimit}
+                <div className="rounded-3xl bg-slate-50 p-4">
+                  <p className="mb-1 text-sm text-slate-500">Correo</p>
+                  <p className="flex items-center gap-2 break-all font-semibold text-slate-950">
+                    <Mail className="h-4 w-4 flex-shrink-0 text-blue-950" />
+                    {displayEmail || 'No registrado'}
                   </p>
                 </div>
 
-                <div className="rounded-xl bg-slate-50 p-3">
-                  <p className="text-xs text-slate-500">Disponibles</p>
-                  <p className="text-2xl font-bold">
-                    {remainingPosts === Infinity ? '∞' : remainingPosts}
+                <div className="rounded-3xl bg-slate-50 p-4">
+                  <p className="mb-1 text-sm text-slate-500">Teléfono</p>
+                  <p className="flex items-center gap-2 font-semibold text-slate-950">
+                    <Phone className="h-4 w-4 text-blue-950" />
+                    {displayPhone || 'No registrado'}
                   </p>
                 </div>
-              </div>
 
-              <Button
-                className="w-full"
-                disabled={!canPublish}
-                onClick={() => router.push('/seller/dashboard')}
-              >
-                <PackagePlus className="mr-2 h-4 w-4" />
-                Publicar artículo
-              </Button>
-            </CardContent>
-          </Card>
+                <div
+                  className={`rounded-3xl border p-4 text-sm ${
+                    hasPublicContact
+                      ? 'border-green-100 bg-green-50 text-green-800'
+                      : 'border-amber-100 bg-amber-50 text-amber-800'
+                  }`}
+                >
+                  {hasPublicContact ? (
+                    <div className="flex gap-2">
+                      <CheckCircle className="mt-0.5 h-4 w-4 flex-shrink-0" />
+                      <p>
+                        Tu perfil está listo para recibir consultas de
+                        compradores.
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="flex gap-2">
+                      <AlertCircle className="mt-0.5 h-4 w-4 flex-shrink-0" />
+                      <p>
+                        Completa nombre, correo y teléfono antes de publicar.
+                      </p>
+                    </div>
+                  )}
+                </div>
 
-          <Card className="h-fit rounded-2xl border-slate-200 bg-white shadow-sm">
-            <CardHeader className="pb-3">
-              <CardTitle className="text-lg">Estadísticas</CardTitle>
-              <CardDescription>Resumen de tu actividad.</CardDescription>
-            </CardHeader>
-
-            <CardContent className="grid gap-3 pt-0 sm:grid-cols-2 lg:grid-cols-1">
-              <div className="rounded-xl bg-slate-50 p-4">
-                <p className="text-2xl font-bold">{activeProducts.length}</p>
-                <p className="text-sm text-slate-500">Productos activos</p>
-              </div>
-
-              <div className="rounded-xl bg-slate-50 p-4">
-                <p className="text-2xl font-bold">{reviewCount}</p>
-                <p className="text-sm text-slate-500">Reseñas recibidas</p>
-              </div>
-
-              <div className="rounded-xl bg-slate-50 p-4">
-                <p className="text-2xl font-bold">{totalViews}</p>
-                <p className="text-sm text-slate-500">Vistas totales</p>
-              </div>
-
-              <div className="rounded-xl bg-slate-50 p-4">
-                <p className="text-2xl font-bold">{totalFavorites}</p>
-                <p className="text-sm text-slate-500">Favoritos</p>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card className="h-fit rounded-2xl border-blue-100 bg-blue-50/70 shadow-sm">
-            <CardHeader className="pb-3">
-              <CardTitle className="text-lg">Marketplace libre</CardTitle>
-              <CardDescription>
-                Estrategia de crecimiento inicial.
-              </CardDescription>
-            </CardHeader>
-
-            <CardContent className="pt-0">
-              <div className="space-y-2 text-sm text-blue-800">
-                <p>Contacto directo visible para compradores.</p>
-                <p>Registro gratuito entre usuarios.</p>
-                <p>Mayor velocidad para concretar ventas.</p>
-              </div>
-
-              <Link href="/products">
-                <Button className="mt-5 w-full">
-                  Ver productos públicos
+                <Button
+                  variant="outline"
+                  className="h-11 w-full rounded-xl bg-white"
+                  onClick={() => setIsEditingProfile(true)}
+                >
+                  <Edit3 className="mr-2 h-4 w-4" />
+                  Editar datos
                 </Button>
-              </Link>
+              </CardContent>
+            </Card>
+
+            <Card className="rounded-[2rem] border-slate-200 bg-white shadow-sm">
+              <CardHeader>
+                <CardTitle className="text-xl font-black text-slate-950">
+                  Publicaciones disponibles
+                </CardTitle>
+
+                <CardDescription>
+                  Control de publicaciones actuales.
+                </CardDescription>
+              </CardHeader>
+
+              <CardContent>
+                <div className="grid grid-cols-3 gap-3 text-center">
+                  <div className="rounded-2xl bg-slate-50 p-4">
+                    <p className="text-2xl font-black text-blue-950">
+                      {publishedProducts.length}
+                    </p>
+                    <p className="mt-1 text-xs text-slate-500">Publicados</p>
+                  </div>
+
+                  <div className="rounded-2xl bg-slate-50 p-4">
+                    <p className="text-2xl font-black text-blue-950">
+                      {postingLimit}
+                    </p>
+                    <p className="mt-1 text-xs text-slate-500">Límite</p>
+                  </div>
+
+                  <div className="rounded-2xl bg-slate-50 p-4">
+                    <p className="text-2xl font-black text-blue-950">
+                      {remainingPosts}
+                    </p>
+                    <p className="mt-1 text-xs text-slate-500">Libres</p>
+                  </div>
+                </div>
+
+                <Button
+                  className="mt-4 h-11 w-full rounded-xl bg-blue-950 hover:bg-blue-900"
+                  disabled={!canPublish}
+                  onClick={() => router.push('/seller/dashboard')}
+                >
+                  <PackagePlus className="mr-2 h-4 w-4" />
+                  Publicar producto
+                </Button>
+              </CardContent>
+            </Card>
+          </aside>
+        </section>
+
+        {/* ESTADÍSTICAS */}
+        <section className="mb-6 grid gap-5 md:grid-cols-4">
+          <Card className="rounded-3xl border-slate-200 bg-white shadow-sm">
+            <CardContent className="p-5">
+              <p className="text-3xl font-black text-blue-950">
+                {activeProducts.length}
+              </p>
+              <p className="mt-1 text-sm text-slate-500">Productos activos</p>
+            </CardContent>
+          </Card>
+
+          <Card className="rounded-3xl border-slate-200 bg-white shadow-sm">
+            <CardContent className="p-5">
+              <p className="text-3xl font-black text-blue-950">
+                {totalViews}
+              </p>
+              <p className="mt-1 text-sm text-slate-500">Vistas totales</p>
+            </CardContent>
+          </Card>
+
+          <Card className="rounded-3xl border-slate-200 bg-white shadow-sm">
+            <CardContent className="p-5">
+              <p className="text-3xl font-black text-blue-950">
+                {totalFavorites}
+              </p>
+              <p className="mt-1 text-sm text-slate-500">Favoritos</p>
+            </CardContent>
+          </Card>
+
+          <Card className="rounded-3xl border-slate-200 bg-white shadow-sm">
+            <CardContent className="p-5">
+              <p className="text-3xl font-black text-blue-950">
+                {reviewCount}
+              </p>
+              <p className="mt-1 text-sm text-slate-500">Reseñas recibidas</p>
             </CardContent>
           </Card>
         </section>
 
-        {/* MENSAJES DE PRODUCTO */}
         {productMessage && (
-          <div className="mb-5 rounded-xl border border-green-200 bg-green-50 p-4 text-sm text-green-700">
+          <div className="mb-5 rounded-2xl border border-green-200 bg-green-50 p-4 text-sm text-green-700">
             {productMessage}
           </div>
         )}
 
         {productError && (
-          <div className="mb-5 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+          <div className="mb-5 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
             {productError}
           </div>
         )}
 
-        {/* MIS PRODUCTOS */}
-        <Card className="mb-5 rounded-2xl border-slate-200 bg-white shadow-sm">
-          <CardHeader className="pb-3">
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-              <div>
-                <CardTitle className="text-lg">Mis productos</CardTitle>
-                <CardDescription>
-                  Productos publicados desde tu cuenta.
-                </CardDescription>
-              </div>
+        {/* MIS PUBLICACIONES */}
+        <section>
+          <div className="mb-5 flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
+            <div>
+              <h2 className="text-2xl font-black text-slate-950 md:text-3xl">
+                Mis publicaciones
+              </h2>
 
-              <Link href="/seller/dashboard">
-                <Button size="sm">
-                  <PackagePlus className="mr-2 h-4 w-4" />
-                  Publicar
-                </Button>
-              </Link>
+              <p className="text-sm text-slate-500">
+                Administra los productos que has publicado.
+              </p>
             </div>
-          </CardHeader>
 
-          <CardContent className="pt-0">
-            {isLoadingProducts ? (
-              <div className="flex items-center justify-center rounded-xl border border-dashed p-10">
-                <div className="text-center">
-                  <Loader2 className="mx-auto mb-3 h-8 w-8 animate-spin text-primary" />
-                  <p className="text-sm text-muted-foreground">
-                    Cargando productos desde Supabase...
-                  </p>
+            <Link href="/seller/dashboard">
+              <Button className="rounded-xl bg-blue-950 hover:bg-blue-900">
+                <PackagePlus className="mr-2 h-4 w-4" />
+                Nueva publicación
+              </Button>
+            </Link>
+          </div>
+
+          {isLoadingProducts ? (
+            <div className="flex min-h-[35vh] items-center justify-center rounded-[2rem] border border-dashed bg-white">
+              <div className="text-center">
+                <Loader2 className="mx-auto mb-3 h-8 w-8 animate-spin text-blue-950" />
+                <p className="text-sm text-slate-500">
+                  Cargando publicaciones...
+                </p>
+              </div>
+            </div>
+          ) : userProducts.length > 0 ? (
+            <div className="grid gap-5 md:grid-cols-2 lg:grid-cols-3">
+              {userProducts.map((product) => {
+                const status = getProductStatus(product);
+
+                return (
+                  <Card
+                    key={product.id}
+                    className="overflow-hidden rounded-3xl border-slate-200 bg-white shadow-sm transition hover:-translate-y-1 hover:shadow-lg"
+                  >
+                    <div className="relative h-52 bg-slate-100">
+                      <img
+                        src={getProductImage(product)}
+                        alt={getProductTitle(product)}
+                        className="h-full w-full object-cover"
+                      />
+
+                      <Badge
+                        className={`absolute left-4 top-4 ${getStatusClass(
+                          status
+                        )}`}
+                      >
+                        {getStatusLabel(status)}
+                      </Badge>
+                    </div>
+
+                    <CardContent className="p-5">
+                      <h3 className="line-clamp-1 text-lg font-black text-slate-950">
+                        {getProductTitle(product)}
+                      </h3>
+
+                      <p className="mt-2 line-clamp-2 text-sm text-slate-500">
+                        {product.description ||
+                          'Producto publicado en La Segunda Market.'}
+                      </p>
+
+                      <p className="mt-4 text-2xl font-black text-blue-950">
+                        S/{' '}
+                        {getProductPrice(product).toLocaleString('es-PE', {
+                          minimumFractionDigits: 0,
+                          maximumFractionDigits: 2,
+                        })}
+                      </p>
+
+                      <div className="mt-3 flex flex-wrap items-center gap-3 text-sm text-slate-500">
+                        <span className="inline-flex items-center gap-1">
+                          <MapPin className="h-4 w-4" />
+                          {product.city || 'Perú'}
+                        </span>
+
+                        <span className="inline-flex items-center gap-1">
+                          <Eye className="h-4 w-4" />
+                          {getProductViews(product)}
+                        </span>
+
+                        <span>{formatDate(product.created_at || product.createdAt)}</span>
+                      </div>
+
+                      <div className="mt-5 grid grid-cols-[1fr_auto] gap-2">
+                        <Link href={`/product/${product.id}`}>
+                          <Button className="w-full rounded-xl bg-blue-950 hover:bg-blue-900">
+                            Ver producto
+                            <ArrowRight className="ml-2 h-4 w-4" />
+                          </Button>
+                        </Link>
+
+                        <Button
+                          variant="outline"
+                          disabled={isDeletingProductId === product.id}
+                          className="rounded-xl bg-white px-3 text-red-600 hover:text-red-700"
+                          onClick={() => handleDeleteProduct(product.id)}
+                        >
+                          {isDeletingProductId === product.id ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          ) : (
+                            <Trash2 className="h-4 w-4" />
+                          )}
+                        </Button>
+                      </div>
+                    </CardContent>
+                  </Card>
+                );
+              })}
+            </div>
+          ) : (
+            <Card className="rounded-[2rem] border-slate-200 bg-white shadow-sm">
+              <CardContent className="p-10 text-center">
+                <div className="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-3xl bg-slate-100 text-slate-500">
+                  <PackagePlus className="h-8 w-8" />
                 </div>
-              </div>
-            ) : userProducts.length > 0 ? (
-              <div className="overflow-x-auto">
-                <table className="w-full min-w-[850px] border-collapse text-sm">
-                  <thead>
-                    <tr className="border-b text-left">
-                      <th className="px-2 py-3 font-semibold text-slate-900">
-                        Producto
-                      </th>
-                      <th className="px-2 py-3 font-semibold text-slate-900">
-                        Precio
-                      </th>
-                      <th className="px-2 py-3 font-semibold text-slate-900">
-                        Vistas
-                      </th>
-                      <th className="px-2 py-3 font-semibold text-slate-900">
-                        Favoritos
-                      </th>
-                      <th className="px-2 py-3 font-semibold text-slate-900">
-                        Estado
-                      </th>
-                      <th className="px-2 py-3 font-semibold text-slate-900">
-                        Acciones
-                      </th>
-                    </tr>
-                  </thead>
 
-                  <tbody>
-                    {userProducts.map((product) => {
-                      const status = getProductStatus(product);
-
-                      return (
-                        <tr key={product.id} className="border-b">
-                          <td className="px-2 py-3">
-                            <div className="flex items-center gap-3">
-                              <img
-                                src={getProductImage(product)}
-                                alt={getProductTitle(product)}
-                                className="h-12 w-12 rounded-md object-cover"
-                              />
-
-                              <div className="min-w-0">
-                                <p className="line-clamp-1 font-medium text-slate-950">
-                                  {getProductTitle(product)}
-                                </p>
-                                <p className="line-clamp-1 text-xs text-slate-500">
-                                  {product.city || 'Perú'}
-                                </p>
-                              </div>
-                            </div>
-                          </td>
-
-                          <td className="px-2 py-3">
-                            S/{' '}
-                            {getProductPrice(product).toLocaleString('es-PE', {
-                              minimumFractionDigits: 0,
-                              maximumFractionDigits: 2,
-                            })}
-                          </td>
-
-                          <td className="px-2 py-3">
-                            <span className="inline-flex items-center gap-1">
-                              <Eye className="h-4 w-4 text-slate-500" />
-                              {getProductViews(product)}
-                            </span>
-                          </td>
-
-                          <td className="px-2 py-3">
-                            <span className="inline-flex items-center gap-1">
-                              <Heart className="h-4 w-4 text-slate-500" />
-                              {getProductFavorites(product)}
-                            </span>
-                          </td>
-
-                          <td className="px-2 py-3">
-                            <Badge className={getStatusBadgeClass(status)}>
-                              {getStatusLabel(status)}
-                            </Badge>
-                          </td>
-
-                          <td className="px-2 py-3">
-                            <div className="flex items-center gap-2">
-                              <Link href={`/product/${product.id}`}>
-                                <Button size="sm" variant="outline" className="bg-white">
-                                  Ver
-                                </Button>
-                              </Link>
-
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                disabled={isDeletingProductId === product.id}
-                                className="bg-white text-red-600 hover:text-red-700"
-                                onClick={() => handleDeleteProduct(product.id)}
-                              >
-                                {isDeletingProductId === product.id ? (
-                                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                                ) : (
-                                  <Trash2 className="mr-2 h-4 w-4" />
-                                )}
-                                Eliminar
-                              </Button>
-                            </div>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            ) : (
-              <div className="rounded-xl border border-dashed p-8 text-center">
-                <PackagePlus className="mx-auto mb-4 h-12 w-12 text-muted-foreground" />
-
-                <h3 className="mb-2 text-xl font-bold">
-                  Aún no tienes productos publicados
+                <h3 className="mb-2 text-2xl font-black text-slate-950">
+                  Aún no tienes publicaciones
                 </h3>
 
-                <p className="mb-5 text-muted-foreground">
-                  Publica tu primer artículo para empezar a vender.
+                <p className="mx-auto mb-6 max-w-md text-slate-500">
+                  Publica tu primer producto para empezar a recibir consultas de
+                  compradores interesados.
                 </p>
 
                 <Link href="/seller/dashboard">
-                  <Button>Publicar producto</Button>
+                  <Button className="rounded-xl bg-blue-950 hover:bg-blue-900">
+                    Crear publicación
+                  </Button>
                 </Link>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* RESEÑAS */}
-        <Card className="rounded-2xl border-slate-200 bg-white shadow-sm">
-          <CardHeader className="pb-3">
-            <CardTitle className="text-lg">Mis reseñas</CardTitle>
-            <CardDescription>
-              Opiniones recibidas por tus compras y ventas.
-            </CardDescription>
-          </CardHeader>
-
-          <CardContent className="pt-0">
-            <div className="rounded-xl border border-dashed p-8 text-center text-muted-foreground">
-              No tienes reseñas registradas todavía.
-            </div>
-          </CardContent>
-        </Card>
+              </CardContent>
+            </Card>
+          )}
+        </section>
       </main>
     </div>
   );
