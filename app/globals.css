@@ -1,125 +1,605 @@
-@import 'tailwindcss';
-@import 'tw-animate-css';
+@import "tailwindcss";
+@import "tw-animate-css";
 
 @custom-variant dark (&:is(.dark *));
 
-:root {
-  --background: oklch(0.99 0 0);
-  --foreground: oklch(0.15 0 0);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.12 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.12 0 0);
-  --primary: oklch(0.35 0.15 265);
-  --primary-foreground: oklch(0.99 0 0);
-  --secondary: oklch(0.52 0.16 188);
-  --secondary-foreground: oklch(0.99 0 0);
-  --muted: oklch(0.92 0 0);
-  --muted-foreground: oklch(0.56 0 0);
-  --accent: oklch(0.45 0.2 188);
-  --accent-foreground: oklch(0.99 0 0);
-  --destructive: oklch(0.577 0.245 27.325);
-  --destructive-foreground: oklch(0.99 0 0);
-  --border: oklch(0.93 0 0);
-  --input: oklch(0.96 0 0);
-  --ring: oklch(0.45 0.2 188);
-  --chart-1: oklch(0.35 0.15 265);
-  --chart-2: oklch(0.52 0.16 188);
-  --chart-3: oklch(0.45 0.2 188);
-  --chart-4: oklch(0.6 0.15 260);
-  --chart-5: oklch(0.48 0.18 190);
-  --radius: 0.625rem;
-  --sidebar: oklch(0.98 0 0);
-  --sidebar-foreground: oklch(0.15 0 0);
-  --sidebar-primary: oklch(0.35 0.15 265);
-  --sidebar-primary-foreground: oklch(0.99 0 0);
-  --sidebar-accent: oklch(0.52 0.16 188);
-  --sidebar-accent-foreground: oklch(0.99 0 0);
-  --sidebar-border: oklch(0.93 0 0);
-  --sidebar-ring: oklch(0.45 0.2 188);
-}
-
-.dark {
-  --background: oklch(0.12 0 0);
-  --foreground: oklch(0.95 0 0);
-  --card: oklch(0.18 0 0);
-  --card-foreground: oklch(0.95 0 0);
-  --popover: oklch(0.18 0 0);
-  --popover-foreground: oklch(0.95 0 0);
-  --primary: oklch(0.65 0.18 270);
-  --primary-foreground: oklch(0.12 0 0);
-  --secondary: oklch(0.72 0.2 190);
-  --secondary-foreground: oklch(0.12 0 0);
-  --muted: oklch(0.35 0 0);
-  --muted-foreground: oklch(0.65 0 0);
-  --accent: oklch(0.72 0.2 190);
-  --accent-foreground: oklch(0.12 0 0);
-  --destructive: oklch(0.396 0.141 25.723);
-  --destructive-foreground: oklch(0.637 0.237 25.331);
-  --border: oklch(0.28 0 0);
-  --input: oklch(0.22 0 0);
-  --ring: oklch(0.65 0.18 270);
-  --chart-1: oklch(0.65 0.18 270);
-  --chart-2: oklch(0.72 0.2 190);
-  --chart-3: oklch(0.68 0.18 185);
-  --chart-4: oklch(0.58 0.15 268);
-  --chart-5: oklch(0.62 0.2 192);
-  --sidebar: oklch(0.15 0 0);
-  --sidebar-foreground: oklch(0.95 0 0);
-  --sidebar-primary: oklch(0.65 0.18 270);
-  --sidebar-primary-foreground: oklch(0.95 0 0);
-  --sidebar-accent: oklch(0.72 0.2 190);
-  --sidebar-accent-foreground: oklch(0.95 0 0);
-  --sidebar-border: oklch(0.28 0 0);
-  --sidebar-ring: oklch(0.65 0.18 270);
-}
-
 @theme inline {
-  --font-sans: 'Geist', 'Geist Fallback';
-  --font-mono: 'Geist Mono', 'Geist Mono Fallback';
   --color-background: var(--background);
   --color-foreground: var(--foreground);
+
   --color-card: var(--card);
   --color-card-foreground: var(--card-foreground);
+
   --color-popover: var(--popover);
   --color-popover-foreground: var(--popover-foreground);
+
   --color-primary: var(--primary);
   --color-primary-foreground: var(--primary-foreground);
+
   --color-secondary: var(--secondary);
   --color-secondary-foreground: var(--secondary-foreground);
+
   --color-muted: var(--muted);
   --color-muted-foreground: var(--muted-foreground);
+
   --color-accent: var(--accent);
   --color-accent-foreground: var(--accent-foreground);
+
   --color-destructive: var(--destructive);
   --color-destructive-foreground: var(--destructive-foreground);
+
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
+
   --color-chart-1: var(--chart-1);
   --color-chart-2: var(--chart-2);
   --color-chart-3: var(--chart-3);
   --color-chart-4: var(--chart-4);
   --color-chart-5: var(--chart-5);
+
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
   --radius-xl: calc(var(--radius) + 4px);
-  --color-sidebar: var(--sidebar);
-  --color-sidebar-foreground: var(--sidebar-foreground);
-  --color-sidebar-primary: var(--sidebar-primary);
-  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
-  --color-sidebar-accent: var(--sidebar-accent);
-  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
-  --color-sidebar-border: var(--sidebar-border);
-  --color-sidebar-ring: var(--sidebar-ring);
+  --radius-2xl: calc(var(--radius) + 10px);
+  --radius-3xl: calc(var(--radius) + 18px);
 }
 
-@layer base {
-  * {
-    @apply border-border outline-ring/50;
+/* ============================================================
+   LA SEGUNDA MARKET - DISEÑO GLOBAL
+   Estilo limpio, comercial, moderno y confiable
+============================================================ */
+
+:root {
+  --radius: 1rem;
+
+  /* Base */
+  --background: #f7f8fb;
+  --foreground: #0f172a;
+
+  --card: #ffffff;
+  --card-foreground: #0f172a;
+
+  --popover: #ffffff;
+  --popover-foreground: #0f172a;
+
+  /* Marca */
+  --primary: #172554;
+  --primary-foreground: #ffffff;
+
+  --secondary: #f8fafc;
+  --secondary-foreground: #0f172a;
+
+  --muted: #f1f5f9;
+  --muted-foreground: #64748b;
+
+  --accent: #f97316;
+  --accent-foreground: #ffffff;
+
+  --destructive: #dc2626;
+  --destructive-foreground: #ffffff;
+
+  --border: #e2e8f0;
+  --input: #e2e8f0;
+  --ring: #1e3a8a;
+
+  /* Charts */
+  --chart-1: #172554;
+  --chart-2: #2563eb;
+  --chart-3: #f97316;
+  --chart-4: #16a34a;
+  --chart-5: #9333ea;
+
+  /* Marca extendida */
+  --brand-navy: #0f172a;
+  --brand-blue: #172554;
+  --brand-blue-soft: #eff6ff;
+  --brand-orange: #f97316;
+  --brand-orange-dark: #ea580c;
+  --brand-green: #16a34a;
+  --brand-surface: #ffffff;
+  --brand-soft: #f7f8fb;
+  --brand-line: #e2e8f0;
+}
+
+.dark {
+  --background: #020617;
+  --foreground: #f8fafc;
+
+  --card: #0f172a;
+  --card-foreground: #f8fafc;
+
+  --popover: #0f172a;
+  --popover-foreground: #f8fafc;
+
+  --primary: #bfdbfe;
+  --primary-foreground: #020617;
+
+  --secondary: #1e293b;
+  --secondary-foreground: #f8fafc;
+
+  --muted: #1e293b;
+  --muted-foreground: #94a3b8;
+
+  --accent: #fb923c;
+  --accent-foreground: #020617;
+
+  --destructive: #ef4444;
+  --destructive-foreground: #ffffff;
+
+  --border: #1e293b;
+  --input: #1e293b;
+  --ring: #60a5fa;
+
+  --chart-1: #93c5fd;
+  --chart-2: #fb923c;
+  --chart-3: #22c55e;
+  --chart-4: #c084fc;
+  --chart-5: #facc15;
+}
+
+/* ============================================================
+   BASE
+============================================================ */
+
+* {
+  border-color: var(--border);
+}
+
+html {
+  scroll-behavior: smooth;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body {
+  min-height: 100vh;
+  background:
+    radial-gradient(circle at top left, rgba(37, 99, 235, 0.08), transparent 32rem),
+    radial-gradient(circle at bottom right, rgba(249, 115, 22, 0.08), transparent 32rem),
+    var(--background);
+  color: var(--foreground);
+  font-family:
+    Inter,
+    ui-sans-serif,
+    system-ui,
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    sans-serif;
+}
+
+a {
+  text-decoration: none;
+}
+
+button,
+a,
+input,
+textarea,
+select {
+  -webkit-tap-highlight-color: transparent;
+}
+
+button {
+  cursor: pointer;
+}
+
+button:disabled {
+  cursor: not-allowed;
+}
+
+input,
+textarea,
+select {
+  font-size: 16px;
+}
+
+::selection {
+  background: rgba(23, 37, 84, 0.18);
+  color: #0f172a;
+}
+
+/* ============================================================
+   SCROLLBAR
+============================================================ */
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: #f1f5f9;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 999px;
+  border: 2px solid #f1f5f9;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+/* ============================================================
+   UTILIDADES VISUALES
+============================================================ */
+
+.market-container {
+  width: 100%;
+  max-width: 80rem;
+  margin-inline: auto;
+  padding-inline: 1rem;
+}
+
+@media (min-width: 640px) {
+  .market-container {
+    padding-inline: 1.5rem;
   }
+}
+
+@media (min-width: 1024px) {
+  .market-container {
+    padding-inline: 2rem;
+  }
+}
+
+.market-card {
+  border: 1px solid var(--border);
+  background: var(--card);
+  border-radius: 2rem;
+  box-shadow:
+    0 1px 2px rgba(15, 23, 42, 0.04),
+    0 16px 40px rgba(15, 23, 42, 0.06);
+}
+
+.market-card-soft {
+  border: 1px solid rgba(226, 232, 240, 0.85);
+  background: rgba(255, 255, 255, 0.88);
+  border-radius: 2rem;
+  box-shadow:
+    0 1px 2px rgba(15, 23, 42, 0.04),
+    0 20px 50px rgba(15, 23, 42, 0.08);
+  backdrop-filter: blur(18px);
+}
+
+.market-gradient {
+  background: linear-gradient(135deg, #0f172a 0%, #172554 48%, #0f172a 100%);
+}
+
+.market-orange-gradient {
+  background: linear-gradient(135deg, #f97316 0%, #ea580c 100%);
+}
+
+.market-text-gradient {
+  background: linear-gradient(135deg, #172554 0%, #2563eb 45%, #f97316 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.market-glow-blue {
+  box-shadow:
+    0 0 0 1px rgba(37, 99, 235, 0.08),
+    0 24px 80px rgba(37, 99, 235, 0.14);
+}
+
+.market-glow-orange {
+  box-shadow:
+    0 0 0 1px rgba(249, 115, 22, 0.08),
+    0 24px 80px rgba(249, 115, 22, 0.16);
+}
+
+.market-focus {
+  outline: none;
+  transition:
+    border-color 180ms ease,
+    box-shadow 180ms ease,
+    background-color 180ms ease;
+}
+
+.market-focus:focus {
+  border-color: #172554;
+  background-color: #ffffff;
+  box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.12);
+}
+
+/* ============================================================
+   IMÁGENES Y TARJETAS DE PRODUCTO
+============================================================ */
+
+.product-image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  background: #f1f5f9;
+}
+
+.product-card-hover {
+  transition:
+    transform 220ms ease,
+    box-shadow 220ms ease,
+    border-color 220ms ease;
+}
+
+.product-card-hover:hover {
+  transform: translateY(-4px);
+  border-color: rgba(37, 99, 235, 0.22);
+  box-shadow:
+    0 1px 2px rgba(15, 23, 42, 0.05),
+    0 24px 60px rgba(15, 23, 42, 0.12);
+}
+
+.image-zoom {
+  transition: transform 320ms ease;
+}
+
+.group:hover .image-zoom {
+  transform: scale(1.05);
+}
+
+/* ============================================================
+   TEXTO
+============================================================ */
+
+.line-clamp-1 {
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 1;
+  -webkit-box-orient: vertical;
+}
+
+.line-clamp-2 {
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+.line-clamp-3 {
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+}
+
+.text-balance {
+  text-wrap: balance;
+}
+
+/* ============================================================
+   BOTONES BASE DE MARCA
+============================================================ */
+
+.btn-market-primary {
+  border-radius: 0.875rem;
+  background: #172554;
+  color: #ffffff;
+  font-weight: 700;
+  transition:
+    background-color 180ms ease,
+    transform 180ms ease,
+    box-shadow 180ms ease;
+}
+
+.btn-market-primary:hover {
+  background: #1e3a8a;
+  box-shadow: 0 12px 30px rgba(23, 37, 84, 0.18);
+}
+
+.btn-market-primary:active {
+  transform: translateY(1px);
+}
+
+.btn-market-accent {
+  border-radius: 0.875rem;
+  background: #f97316;
+  color: #ffffff;
+  font-weight: 700;
+  transition:
+    background-color 180ms ease,
+    transform 180ms ease,
+    box-shadow 180ms ease;
+}
+
+.btn-market-accent:hover {
+  background: #ea580c;
+  box-shadow: 0 12px 30px rgba(249, 115, 22, 0.22);
+}
+
+.btn-market-accent:active {
+  transform: translateY(1px);
+}
+
+/* ============================================================
+   FORMULARIOS
+============================================================ */
+
+.market-input {
+  height: 3rem;
+  width: 100%;
+  border-radius: 0.875rem;
+  border: 1px solid #e2e8f0;
+  background: #f8fafc;
+  padding-inline: 1rem;
+  font-size: 0.875rem;
+  outline: none;
+  transition:
+    border-color 180ms ease,
+    background-color 180ms ease,
+    box-shadow 180ms ease;
+}
+
+.market-input:focus {
+  border-color: #172554;
+  background: #ffffff;
+  box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.12);
+}
+
+.market-textarea {
+  width: 100%;
+  min-height: 8rem;
+  border-radius: 0.875rem;
+  border: 1px solid #e2e8f0;
+  background: #f8fafc;
+  padding: 0.875rem 1rem;
+  font-size: 0.875rem;
+  outline: none;
+  resize: vertical;
+  transition:
+    border-color 180ms ease,
+    background-color 180ms ease,
+    box-shadow 180ms ease;
+}
+
+.market-textarea:focus {
+  border-color: #172554;
+  background: #ffffff;
+  box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.12);
+}
+
+/* ============================================================
+   BADGES
+============================================================ */
+
+.badge-available {
+  background: #172554;
+  color: #ffffff;
+}
+
+.badge-reserved {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.badge-sold {
+  background: #334155;
+  color: #ffffff;
+}
+
+.badge-soft-blue {
+  background: #eff6ff;
+  color: #172554;
+}
+
+.badge-soft-orange {
+  background: #fff7ed;
+  color: #c2410c;
+}
+
+.badge-soft-green {
+  background: #f0fdf4;
+  color: #166534;
+}
+
+/* ============================================================
+   ANIMACIONES SUAVES
+============================================================ */
+
+@keyframes fadeUp {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes softPulse {
+  0%,
+  100% {
+    opacity: 0.7;
+    transform: scale(1);
+  }
+
+  50% {
+    opacity: 1;
+    transform: scale(1.04);
+  }
+}
+
+.animate-fade-up {
+  animation: fadeUp 520ms ease both;
+}
+
+.animate-soft-pulse {
+  animation: softPulse 4s ease-in-out infinite;
+}
+
+/* ============================================================
+   TABLAS
+============================================================ */
+
+.market-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.market-table th {
+  padding: 0.875rem;
+  text-align: left;
+  font-size: 0.8rem;
+  font-weight: 800;
+  color: #0f172a;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.market-table td {
+  padding: 0.875rem;
+  border-bottom: 1px solid #e2e8f0;
+  color: #334155;
+}
+
+/* ============================================================
+   RESPONSIVE
+============================================================ */
+
+@media (max-width: 640px) {
   body {
-    @apply bg-background text-foreground;
+    background:
+      radial-gradient(circle at top left, rgba(37, 99, 235, 0.1), transparent 22rem),
+      var(--background);
+  }
+
+  input,
+  textarea,
+  select {
+    font-size: 16px;
+  }
+
+  .market-card,
+  .market-card-soft {
+    border-radius: 1.5rem;
+  }
+}
+
+/* ============================================================
+   PRINT
+============================================================ */
+
+@media print {
+  header,
+  footer,
+  button,
+  .no-print {
+    display: none !important;
+  }
+
+  body {
+    background: #ffffff !important;
+    color: #000000 !important;
+  }
+
+  .market-card,
+  .market-card-soft {
+    box-shadow: none !important;
+    border: 1px solid #cccccc !important;
   }
 }
