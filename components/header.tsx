@@ -1,159 +1,278 @@
 'use client';
 
-import Link from 'next/link';
-import { useRouter } from 'next/navigation';
 import { useState } from 'react';
+import Link from 'next/link';
+import { usePathname, useRouter } from 'next/navigation';
 import {
-  Heart,
-  MessageSquare,
+  Home,
+  LogIn,
+  LogOut,
+  Menu,
+  PackagePlus,
   Search,
   Store,
   User,
-  LogOut,
+  UserPlus,
+  X,
 } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { useAuth } from '@/lib/auth-context';
 
-const LOGO_SRC = '/lasegunda.png';
+import { useAuth } from '@/lib/auth-context';
+import { supabase } from '@/lib/supabase/client';
+import { Button } from '@/components/ui/button';
+
+const navItems = [
+  {
+    label: 'Inicio',
+    href: '/',
+    icon: Home,
+  },
+  {
+    label: 'Productos',
+    href: '/products',
+    icon: Search,
+  },
+  {
+    label: 'Publicar',
+    href: '/seller/dashboard',
+    icon: PackagePlus,
+  },
+];
 
 export function Header() {
+  const pathname = usePathname();
   const router = useRouter();
-  const { isAuthenticated, logout } = useAuth();
 
-  const [searchTerm, setSearchTerm] = useState('');
-  const [logoError, setLogoError] = useState(false);
+  const { user, isAuthenticated, isLoading } = useAuth();
+  const currentUser = user as any;
 
-  const handleSearch = (event: React.FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
 
-    const cleanSearch = searchTerm.trim();
+  const displayName =
+    currentUser?.name ||
+    currentUser?.full_name ||
+    currentUser?.email?.split('@')?.[0] ||
+    'Mi cuenta';
 
-    if (!cleanSearch) {
-      router.push('/products');
-      return;
+  const isActiveRoute = (href: string) => {
+    if (href === '/') {
+      return pathname === '/';
     }
 
-    router.push(`/products?search=${encodeURIComponent(cleanSearch)}`);
+    return pathname?.startsWith(href);
   };
 
-  const handleLogout = () => {
-    logout();
-    router.push('/');
+  const closeMenu = () => {
+    setIsMenuOpen(false);
+  };
+
+  const handleLogout = async () => {
+    setIsLoggingOut(true);
+
+    try {
+      await supabase.auth.signOut();
+
+      if (typeof window !== 'undefined') {
+        localStorage.removeItem('la-segunda-user');
+        localStorage.removeItem('la-segunda-auth');
+      }
+
+      closeMenu();
+      router.push('/');
+      router.refresh();
+    } catch (error) {
+      console.error('[La Segunda] Error cerrando sesión:', error);
+    } finally {
+      setIsLoggingOut(false);
+    }
   };
 
   return (
-    <header className="sticky top-0 z-50 w-full border-b bg-white/95 backdrop-blur">
-      <div className="mx-auto flex h-20 max-w-7xl items-center justify-between gap-4 px-4">
-        <Link href="/" className="flex shrink-0 items-center">
-          {!logoError ? (
-            <div className="flex h-14 w-[240px] items-center overflow-hidden rounded-md bg-white sm:w-[270px]">
-              <img
-                src={LOGO_SRC}
-                alt="La Segunda"
-                onError={() => setLogoError(true)}
-                className="h-full w-full object-cover object-center"
-              />
-            </div>
-          ) : (
-            <div className="flex items-center gap-2">
-              <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-primary text-base font-bold text-primary-foreground">
-                S
-              </div>
+    <header className="sticky top-0 z-50 border-b border-slate-200 bg-white/90 shadow-sm backdrop-blur-xl">
+      <div className="mx-auto flex h-20 max-w-7xl items-center justify-between px-4">
+        {/* LOGO */}
+        <Link
+          href="/"
+          onClick={closeMenu}
+          className="group flex items-center gap-3"
+        >
+          <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-blue-950 text-white shadow-md transition group-hover:scale-105">
+            <Store className="h-6 w-6" />
+          </div>
 
-              <span className="text-2xl font-bold text-slate-950">
-                La Segunda
-              </span>
-            </div>
-          )}
+          <div className="leading-tight">
+            <p className="text-xl font-black tracking-tight text-slate-950">
+              La Segunda
+            </p>
+            <p className="text-xs font-medium text-slate-500">
+              Market Perú
+            </p>
+          </div>
         </Link>
 
-        <form
-          onSubmit={handleSearch}
-          className="hidden flex-1 justify-center md:flex"
-        >
-          <div className="relative w-full max-w-md">
-            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
+        {/* NAV DESKTOP */}
+        <nav className="hidden items-center gap-1 lg:flex">
+          {navItems.map((item) => {
+            const Icon = item.icon;
+            const isActive = isActiveRoute(item.href);
 
-            <input
-              type="search"
-              value={searchTerm}
-              onChange={(event) => setSearchTerm(event.target.value)}
-              placeholder="Buscar productos..."
-              className="h-10 w-full rounded-lg border bg-slate-100 px-4 pl-10 text-sm outline-none transition focus:border-primary focus:bg-white"
-            />
-          </div>
-        </form>
+            return (
+              <Link
+                key={item.href}
+                href={item.href}
+                className={`inline-flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold transition ${
+                  isActive
+                    ? 'bg-blue-50 text-blue-950'
+                    : 'text-slate-600 hover:bg-slate-50 hover:text-blue-950'
+                }`}
+              >
+                <Icon className="h-4 w-4" />
+                {item.label}
+              </Link>
+            );
+          })}
+        </nav>
 
-        <nav className="flex shrink-0 items-center gap-1">
-          <Link href="/favorites">
-            <Button variant="ghost" size="icon" title="Favoritos">
-              <Heart className="h-5 w-5" />
-            </Button>
-          </Link>
-
-          <Link href="/messages">
-            <Button variant="ghost" size="icon" title="Mensajes">
-              <MessageSquare className="h-5 w-5" />
-            </Button>
-          </Link>
-
-          {isAuthenticated ? (
+        {/* ACCIONES DESKTOP */}
+        <div className="hidden items-center gap-3 lg:flex">
+          {!isLoading && isAuthenticated ? (
             <>
               <Link href="/profile">
-                <Button variant="ghost" size="icon" title="Mi perfil">
-                  <User className="h-5 w-5" />
-                </Button>
-              </Link>
-
-              <Link href="/seller/dashboard" className="hidden sm:block">
-                <Button variant="outline" size="sm">
-                  <Store className="mr-2 h-4 w-4" />
-                  Mi tienda
+                <Button
+                  variant="outline"
+                  className="h-11 rounded-xl bg-white px-4"
+                >
+                  <User className="mr-2 h-4 w-4" />
+                  {displayName}
                 </Button>
               </Link>
 
               <Button
-                variant="ghost"
-                size="icon"
-                title="Cerrar sesión"
                 onClick={handleLogout}
+                disabled={isLoggingOut}
+                variant="outline"
+                className="h-11 rounded-xl bg-white px-4 text-slate-600 hover:text-red-600"
               >
-                <LogOut className="h-5 w-5" />
+                {isLoggingOut ? (
+                  <span className="flex items-center gap-2">
+                    <span className="h-4 w-4 animate-spin rounded-full border-2 border-slate-300 border-t-slate-700" />
+                    Saliendo
+                  </span>
+                ) : (
+                  <>
+                    <LogOut className="mr-2 h-4 w-4" />
+                    Salir
+                  </>
+                )}
               </Button>
             </>
           ) : (
             <>
               <Link href="/auth/login">
-                <Button variant="ghost" size="sm">
-                  Iniciar sesión
+                <Button
+                  variant="outline"
+                  className="h-11 rounded-xl bg-white px-4"
+                >
+                  <LogIn className="mr-2 h-4 w-4" />
+                  Ingresar
                 </Button>
               </Link>
 
-              <Link href="/auth/register" className="hidden sm:block">
-                <Button size="sm">Registrarme</Button>
+              <Link href="/auth/register">
+                <Button className="h-11 rounded-xl bg-orange-600 px-5 hover:bg-orange-700">
+                  <UserPlus className="mr-2 h-4 w-4" />
+                  Crear cuenta
+                </Button>
               </Link>
             </>
           )}
-        </nav>
+        </div>
+
+        {/* BOTÓN MOBILE */}
+        <button
+          type="button"
+          onClick={() => setIsMenuOpen((value) => !value)}
+          className="flex h-11 w-11 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-700 shadow-sm lg:hidden"
+        >
+          {isMenuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+        </button>
       </div>
 
-      <div className="border-t px-4 py-2 md:hidden">
-        <form onSubmit={handleSearch}>
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
+      {/* NAV MOBILE */}
+      {isMenuOpen && (
+        <div className="border-t border-slate-200 bg-white px-4 py-4 shadow-lg lg:hidden">
+          <nav className="mx-auto flex max-w-7xl flex-col gap-2">
+            {navItems.map((item) => {
+              const Icon = item.icon;
+              const isActive = isActiveRoute(item.href);
 
-            <input
-              type="search"
-              value={searchTerm}
-              onChange={(event) => setSearchTerm(event.target.value)}
-              placeholder="Buscar productos..."
-              className="h-10 w-full rounded-lg border bg-slate-100 px-4 pl-10 text-sm outline-none transition focus:border-primary focus:bg-white"
-            />
-          </div>
-        </form>
-      </div>
+              return (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  onClick={closeMenu}
+                  className={`flex items-center gap-3 rounded-2xl px-4 py-3 text-sm font-semibold transition ${
+                    isActive
+                      ? 'bg-blue-50 text-blue-950'
+                      : 'text-slate-600 hover:bg-slate-50 hover:text-blue-950'
+                  }`}
+                >
+                  <Icon className="h-5 w-5" />
+                  {item.label}
+                </Link>
+              );
+            })}
+
+            <div className="my-2 h-px bg-slate-100" />
+
+            {!isLoading && isAuthenticated ? (
+              <>
+                <Link
+                  href="/profile"
+                  onClick={closeMenu}
+                  className={`flex items-center gap-3 rounded-2xl px-4 py-3 text-sm font-semibold transition ${
+                    isActiveRoute('/profile')
+                      ? 'bg-blue-50 text-blue-950'
+                      : 'text-slate-600 hover:bg-slate-50 hover:text-blue-950'
+                  }`}
+                >
+                  <User className="h-5 w-5" />
+                  {displayName}
+                </Link>
+
+                <button
+                  type="button"
+                  onClick={handleLogout}
+                  disabled={isLoggingOut}
+                  className="flex items-center gap-3 rounded-2xl px-4 py-3 text-left text-sm font-semibold text-red-600 transition hover:bg-red-50 disabled:opacity-60"
+                >
+                  <LogOut className="h-5 w-5" />
+                  {isLoggingOut ? 'Cerrando sesión...' : 'Cerrar sesión'}
+                </button>
+              </>
+            ) : (
+              <div className="grid gap-2">
+                <Link href="/auth/login" onClick={closeMenu}>
+                  <Button
+                    variant="outline"
+                    className="h-12 w-full rounded-xl bg-white"
+                  >
+                    <LogIn className="mr-2 h-4 w-4" />
+                    Ingresar
+                  </Button>
+                </Link>
+
+                <Link href="/auth/register" onClick={closeMenu}>
+                  <Button className="h-12 w-full rounded-xl bg-orange-600 hover:bg-orange-700">
+                    <UserPlus className="mr-2 h-4 w-4" />
+                    Crear cuenta
+                  </Button>
+                </Link>
+              </div>
+            )}
+          </nav>
+        </div>
+      )}
     </header>
   );
 }
-
-export default Header;
