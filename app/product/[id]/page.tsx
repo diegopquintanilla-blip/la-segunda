@@ -87,15 +87,15 @@ type SellerProfile = {
   city: string | null;
   bio: string | null;
   avatar_url: string | null;
-  gender: 'male' | 'female' | 'neutral' | null;
-  account_type: 'buyer' | 'seller' | 'both' | null;
-  verification_status: 'pending' | 'verified' | 'rejected' | null;
+  gender: 'male' | 'female' | 'neutral' | string | null;
+  account_type: 'buyer' | 'seller' | 'both' | string | null;
+  verification_status: 'pending' | 'verified' | 'rejected' | string | null;
   rating: number | null;
   review_count: number | null;
   created_at: string | null;
 };
 
-const DEFAULT_PRODUCT_IMAGE = 'https://placehold.co/900x650?text=La+Segunda';
+const DEFAULT_PRODUCT_IMAGE = 'https://placehold.co/1000x760?text=La+Segunda';
 const DEFAULT_AVATAR = 'https://placehold.co/180x180?text=LS';
 
 function isValidImageUrl(value?: string | null) {
@@ -151,7 +151,6 @@ function getProductImages(product: ProductRow) {
   ].filter(Boolean) as string[];
 
   const validImages = allImages.filter((image) => isValidImageUrl(image));
-
   const uniqueImages = Array.from(new Set(validImages));
 
   return uniqueImages.length > 0 ? uniqueImages : [DEFAULT_PRODUCT_IMAGE];
@@ -193,25 +192,32 @@ function getProductFavorites(product: ProductRow) {
 function getStatusLabel(status?: string | null) {
   const value = String(status || 'active').toLowerCase();
 
-  if (value === 'active') return 'Activo';
-  if (value === 'published') return 'Publicado';
+  if (value === 'active') return 'Disponible';
+  if (value === 'published') return 'Disponible';
   if (value === 'available') return 'Disponible';
   if (value === 'reserved') return 'Reservado';
   if (value === 'sold') return 'Vendido';
   if (value === 'pending') return 'Pendiente';
-  if (value === 'inactive') return 'Inactivo';
 
-  return value;
+  return 'Disponible';
 }
 
-function getStatusBadgeClass(status?: string | null) {
+function getStatusClass(status?: string | null) {
   const value = String(status || 'active').toLowerCase();
 
-  if (value === 'reserved') return 'bg-amber-100 text-amber-800 hover:bg-amber-100';
-  if (value === 'sold') return 'bg-slate-700 text-white hover:bg-slate-700';
-  if (value === 'pending') return 'bg-slate-100 text-slate-700 hover:bg-slate-100';
+  if (value === 'reserved') {
+    return 'bg-amber-100 text-amber-800 hover:bg-amber-100';
+  }
 
-  return 'bg-blue-900 text-white hover:bg-blue-900';
+  if (value === 'sold') {
+    return 'bg-slate-700 text-white hover:bg-slate-700';
+  }
+
+  if (value === 'pending') {
+    return 'bg-slate-100 text-slate-700 hover:bg-slate-100';
+  }
+
+  return 'bg-blue-950 text-white hover:bg-blue-950';
 }
 
 function formatPhoneForWhatsApp(phone?: string | null) {
@@ -359,39 +365,42 @@ export default function ProductDetailPage() {
       )}`
     : '';
 
+  const hasPhone = Boolean(sellerPhone);
+  const hasEmail = Boolean(sellerEmail);
+  const hasContact = hasPhone || hasEmail || Boolean(whatsappUrl);
+
   const handleCopyContact = async () => {
     const text = [
+      `Producto: ${product ? getProductTitle(product) : ''}`,
       `Vendedor: ${sellerName}`,
       sellerPhone ? `Teléfono: ${sellerPhone}` : '',
       sellerEmail ? `Correo: ${sellerEmail}` : '',
-      product ? `Producto: ${getProductTitle(product)}` : '',
+      product?.city || sellerCity ? `Ubicación: ${product?.city || sellerCity}` : '',
     ]
       .filter(Boolean)
       .join('\n');
 
     try {
       await navigator.clipboard.writeText(text);
-      setCopyMessage('Contacto copiado correctamente.');
+      setCopyMessage('Datos copiados correctamente.');
 
       setTimeout(() => {
         setCopyMessage('');
       }, 2500);
     } catch {
-      setCopyMessage('No se pudo copiar el contacto.');
+      setCopyMessage('No se pudo copiar la información.');
     }
   };
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-[#F7F8FB]">
+      <div className="min-h-screen bg-[#F7F8FB] text-slate-950">
         <Header />
 
         <main className="mx-auto flex min-h-[70vh] max-w-7xl items-center justify-center px-4 py-10">
           <div className="text-center">
-            <Loader2 className="mx-auto mb-3 h-8 w-8 animate-spin text-primary" />
-            <p className="text-sm text-muted-foreground">
-              Cargando producto...
-            </p>
+            <Loader2 className="mx-auto mb-3 h-8 w-8 animate-spin text-blue-950" />
+            <p className="text-sm text-slate-500">Cargando producto...</p>
           </div>
         </main>
       </div>
@@ -400,24 +409,28 @@ export default function ProductDetailPage() {
 
   if (errorMessage || !product) {
     return (
-      <div className="min-h-screen bg-[#F7F8FB]">
+      <div className="min-h-screen bg-[#F7F8FB] text-slate-950">
         <Header />
 
         <main className="mx-auto max-w-7xl px-4 py-10">
-          <Card className="rounded-2xl border-slate-200 bg-white shadow-sm">
+          <Card className="rounded-[2rem] border-slate-200 bg-white shadow-sm">
             <CardContent className="p-10 text-center">
-              <AlertCircle className="mx-auto mb-4 h-12 w-12 text-red-500" />
+              <div className="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-3xl bg-red-50 text-red-500">
+                <AlertCircle className="h-8 w-8" />
+              </div>
 
-              <h1 className="mb-2 text-2xl font-bold text-slate-950">
+              <h1 className="mb-2 text-2xl font-black text-slate-950">
                 Producto no encontrado
               </h1>
 
-              <p className="mb-6 text-slate-500">
+              <p className="mx-auto mb-6 max-w-md text-slate-500">
                 {errorMessage || 'No encontramos este producto.'}
               </p>
 
               <Link href="/products">
-                <Button>Ver productos</Button>
+                <Button className="rounded-xl bg-blue-950 hover:bg-blue-900">
+                  Ver productos
+                </Button>
               </Link>
             </CardContent>
           </Card>
@@ -429,29 +442,29 @@ export default function ProductDetailPage() {
   const status = String(product.status || 'active').toLowerCase();
 
   return (
-    <div className="min-h-screen bg-[#F7F8FB]">
+    <div className="min-h-screen bg-[#F7F8FB] text-slate-950">
       <Header />
 
       <main className="mx-auto max-w-7xl px-4 py-6">
         <button
           type="button"
           onClick={() => router.back()}
-          className="mb-5 inline-flex items-center gap-2 text-sm font-medium text-slate-600 transition hover:text-slate-950"
+          className="mb-5 inline-flex items-center gap-2 rounded-full border bg-white px-4 py-2 text-sm font-medium text-slate-600 shadow-sm transition hover:border-blue-200 hover:bg-blue-50 hover:text-blue-950"
         >
           <ArrowLeft className="h-4 w-4" />
           Volver
         </button>
 
         <div className="grid gap-6 lg:grid-cols-[1fr_420px]">
-          {/* COLUMNA IZQUIERDA */}
+          {/* GALERÍA Y DESCRIPCIÓN */}
           <section className="space-y-5">
-            <Card className="overflow-hidden rounded-2xl border-slate-200 bg-white shadow-sm">
+            <Card className="overflow-hidden rounded-[2rem] border-slate-200 bg-white shadow-sm">
               <CardContent className="p-4">
-                <div className="overflow-hidden rounded-xl bg-slate-100">
+                <div className="overflow-hidden rounded-[1.5rem] bg-slate-100">
                   <img
                     src={selectedImage || DEFAULT_PRODUCT_IMAGE}
                     alt={getProductTitle(product)}
-                    className="h-[360px] w-full object-cover md:h-[520px]"
+                    className="h-[360px] w-full object-cover md:h-[540px]"
                   />
                 </div>
 
@@ -462,9 +475,9 @@ export default function ProductDetailPage() {
                         key={image}
                         type="button"
                         onClick={() => setSelectedImage(image)}
-                        className={`overflow-hidden rounded-lg border transition ${
+                        className={`overflow-hidden rounded-2xl border transition ${
                           selectedImage === image
-                            ? 'border-blue-700 ring-2 ring-blue-200'
+                            ? 'border-blue-950 ring-2 ring-blue-100'
                             : 'border-slate-200 hover:border-blue-300'
                         }`}
                       >
@@ -480,10 +493,10 @@ export default function ProductDetailPage() {
               </CardContent>
             </Card>
 
-            <Card className="rounded-2xl border-slate-200 bg-white shadow-sm">
+            <Card className="rounded-[2rem] border-slate-200 bg-white shadow-sm">
               <CardHeader>
-                <div className="mb-2 flex flex-wrap gap-2">
-                  <Badge className={getStatusBadgeClass(status)}>
+                <div className="mb-3 flex flex-wrap gap-2">
+                  <Badge className={getStatusClass(status)}>
                     {getStatusLabel(status)}
                   </Badge>
 
@@ -500,7 +513,7 @@ export default function ProductDetailPage() {
                   )}
                 </div>
 
-                <CardTitle className="text-2xl font-black text-slate-950 md:text-3xl">
+                <CardTitle className="text-3xl font-black leading-tight text-slate-950 md:text-4xl">
                   {getProductTitle(product)}
                 </CardTitle>
 
@@ -512,7 +525,7 @@ export default function ProductDetailPage() {
 
                   <span className="inline-flex items-center gap-1">
                     <Calendar className="h-4 w-4" />
-                    Publicado el {formatDate(product.created_at || product.createdAt)}
+                    {formatDate(product.created_at || product.createdAt)}
                   </span>
 
                   <span className="inline-flex items-center gap-1">
@@ -528,7 +541,7 @@ export default function ProductDetailPage() {
               </CardHeader>
 
               <CardContent>
-                <p className="mb-5 text-3xl font-extrabold text-blue-900">
+                <p className="mb-6 text-4xl font-black text-blue-950">
                   S/{' '}
                   {getProductPrice(product).toLocaleString('es-PE', {
                     minimumFractionDigits: 0,
@@ -536,12 +549,12 @@ export default function ProductDetailPage() {
                   })}
                 </p>
 
-                <div className="text-slate-700">
-                  <h3 className="mb-2 text-lg font-bold text-slate-950">
-                    Descripción
+                <div className="rounded-3xl bg-slate-50 p-5">
+                  <h3 className="mb-3 text-lg font-black text-slate-950">
+                    Descripción del producto
                   </h3>
 
-                  <p className="whitespace-pre-line leading-relaxed">
+                  <p className="whitespace-pre-line leading-relaxed text-slate-700">
                     {product.description ||
                       'Este producto no tiene descripción detallada.'}
                   </p>
@@ -550,23 +563,21 @@ export default function ProductDetailPage() {
             </Card>
           </section>
 
-          {/* COLUMNA DERECHA */}
+          {/* VENDEDOR */}
           <aside className="space-y-5">
-            <Card className="rounded-2xl border-slate-200 bg-white shadow-sm">
+            <Card className="sticky top-24 rounded-[2rem] border-slate-200 bg-white shadow-sm">
               <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-xl">
-                  <User className="h-5 w-5 text-blue-900" />
-                  Datos del vendedor
+                <CardTitle className="text-xl font-black text-slate-950">
+                  Información del vendedor
                 </CardTitle>
 
                 <CardDescription>
-                  Contacto visible para facilitar la comunicación directa entre
-                  comprador y vendedor.
+                  Revisa los datos y coordina directamente la compra.
                 </CardDescription>
               </CardHeader>
 
               <CardContent className="space-y-4">
-                <div className="flex items-center gap-4 rounded-xl bg-slate-50 p-4">
+                <div className="flex items-center gap-4 rounded-3xl bg-slate-50 p-4">
                   <img
                     src={
                       seller?.avatar_url && isValidImageUrl(seller.avatar_url)
@@ -578,11 +589,11 @@ export default function ProductDetailPage() {
                   />
 
                   <div className="min-w-0">
-                    <h2 className="line-clamp-1 text-lg font-bold text-slate-950">
+                    <h2 className="line-clamp-1 text-lg font-black text-slate-950">
                       {sellerName}
                     </h2>
 
-                    <p className="flex items-center gap-1 text-sm text-slate-500">
+                    <p className="mt-1 flex items-center gap-1 text-sm text-slate-500">
                       <MapPin className="h-3 w-3" />
                       {sellerCity}
                     </p>
@@ -597,27 +608,27 @@ export default function ProductDetailPage() {
                   </div>
                 </div>
 
-                <div className="space-y-3 rounded-xl border bg-white p-4">
+                <div className="space-y-3 rounded-3xl border bg-white p-4">
                   <div>
-                    <p className="mb-1 text-xs font-medium uppercase tracking-wide text-slate-500">
+                    <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-400">
                       Nombre
                     </p>
 
                     <p className="flex items-center gap-2 font-semibold text-slate-950">
-                      <User className="h-4 w-4 text-blue-900" />
+                      <User className="h-4 w-4 text-blue-950" />
                       {sellerName}
                     </p>
                   </div>
 
                   <div>
-                    <p className="mb-1 text-xs font-medium uppercase tracking-wide text-slate-500">
+                    <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-400">
                       Teléfono
                     </p>
 
                     {sellerPhone ? (
                       <a
                         href={`tel:${sellerPhone}`}
-                        className="flex items-center gap-2 font-semibold text-blue-900 hover:underline"
+                        className="flex items-center gap-2 font-semibold text-blue-950 hover:underline"
                       >
                         <Phone className="h-4 w-4" />
                         {sellerPhone}
@@ -631,14 +642,14 @@ export default function ProductDetailPage() {
                   </div>
 
                   <div>
-                    <p className="mb-1 text-xs font-medium uppercase tracking-wide text-slate-500">
+                    <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-400">
                       Correo
                     </p>
 
                     {sellerEmail ? (
                       <a
                         href={mailtoUrl}
-                        className="flex items-center gap-2 break-all font-semibold text-blue-900 hover:underline"
+                        className="flex items-center gap-2 break-all font-semibold text-blue-950 hover:underline"
                       >
                         <Mail className="h-4 w-4 flex-shrink-0" />
                         {sellerEmail}
@@ -653,7 +664,7 @@ export default function ProductDetailPage() {
                 </div>
 
                 {copyMessage && (
-                  <div className="rounded-xl border border-green-200 bg-green-50 p-3 text-sm text-green-700">
+                  <div className="rounded-2xl border border-green-200 bg-green-50 p-3 text-sm text-green-700">
                     {copyMessage}
                   </div>
                 )}
@@ -661,90 +672,131 @@ export default function ProductDetailPage() {
                 <div className="grid gap-3">
                   {whatsappUrl ? (
                     <a href={whatsappUrl} target="_blank" rel="noreferrer">
-                      <Button className="w-full bg-green-600 hover:bg-green-700">
-                        <MessageCircle className="mr-2 h-4 w-4" />
+                      <Button className="h-12 w-full rounded-xl bg-green-600 text-base hover:bg-green-700">
+                        <MessageCircle className="mr-2 h-5 w-5" />
                         Escribir por WhatsApp
                       </Button>
                     </a>
                   ) : (
-                    <Button className="w-full" disabled>
-                      <MessageCircle className="mr-2 h-4 w-4" />
+                    <Button className="h-12 w-full rounded-xl" disabled>
+                      <MessageCircle className="mr-2 h-5 w-5" />
                       WhatsApp no disponible
                     </Button>
                   )}
 
-                  {sellerPhone && (
-                    <a href={`tel:${sellerPhone}`}>
-                      <Button variant="outline" className="w-full bg-white">
-                        <Phone className="mr-2 h-4 w-4" />
-                        Llamar vendedor
-                      </Button>
-                    </a>
-                  )}
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    {sellerPhone && (
+                      <a href={`tel:${sellerPhone}`}>
+                        <Button
+                          variant="outline"
+                          className="h-11 w-full rounded-xl bg-white"
+                        >
+                          <Phone className="mr-2 h-4 w-4" />
+                          Llamar
+                        </Button>
+                      </a>
+                    )}
 
-                  {sellerEmail && (
-                    <a href={mailtoUrl}>
-                      <Button variant="outline" className="w-full bg-white">
-                        <Mail className="mr-2 h-4 w-4" />
-                        Enviar correo
-                      </Button>
-                    </a>
-                  )}
-
-                  <Button
-                    variant="outline"
-                    className="w-full bg-white"
-                    onClick={handleCopyContact}
-                  >
-                    <Copy className="mr-2 h-4 w-4" />
-                    Copiar contacto
-                  </Button>
-                </div>
-
-                <div className="rounded-xl border border-blue-100 bg-blue-50/70 p-4 text-sm text-blue-800">
-                  <div className="mb-2 flex items-center gap-2 font-semibold">
-                    <ShieldCheck className="h-4 w-4" />
-                    Recomendación de seguridad
+                    {sellerEmail && (
+                      <a href={mailtoUrl}>
+                        <Button
+                          variant="outline"
+                          className="h-11 w-full rounded-xl bg-white"
+                        >
+                          <Mail className="mr-2 h-4 w-4" />
+                          Correo
+                        </Button>
+                      </a>
+                    )}
                   </div>
 
-                  <p>
-                    Verifica el estado del producto antes de pagar. Coordina en
-                    lugares seguros y conserva evidencia de la conversación.
+                  {hasContact && (
+                    <Button
+                      variant="outline"
+                      className="h-11 w-full rounded-xl bg-white"
+                      onClick={handleCopyContact}
+                    >
+                      <Copy className="mr-2 h-4 w-4" />
+                      Copiar datos
+                    </Button>
+                  )}
+                </div>
+
+                <div className="rounded-3xl border border-blue-100 bg-blue-50/70 p-4 text-sm text-blue-900">
+                  <div className="mb-2 flex items-center gap-2 font-black">
+                    <ShieldCheck className="h-4 w-4" />
+                    Compra con seguridad
+                  </div>
+
+                  <p className="leading-relaxed">
+                    Verifica el estado del producto, coordina en un lugar seguro
+                    y conserva evidencia de la conversación.
                   </p>
                 </div>
               </CardContent>
             </Card>
-
-            <Card className="rounded-2xl border-slate-200 bg-white shadow-sm">
-              <CardHeader>
-                <CardTitle className="text-lg">Compra segura</CardTitle>
-              </CardHeader>
-
-              <CardContent className="space-y-3 text-sm text-slate-600">
-                <div className="flex gap-2">
-                  <CheckCircle className="mt-0.5 h-4 w-4 flex-shrink-0 text-green-700" />
-                  <p>Solicita fotos reales y confirma el estado del producto.</p>
-                </div>
-
-                <div className="flex gap-2">
-                  <CheckCircle className="mt-0.5 h-4 w-4 flex-shrink-0 text-green-700" />
-                  <p>Coordina entregas en lugares públicos y seguros.</p>
-                </div>
-
-                <div className="flex gap-2">
-                  <CheckCircle className="mt-0.5 h-4 w-4 flex-shrink-0 text-green-700" />
-                  <p>No compartas claves, códigos ni datos bancarios sensibles.</p>
-                </div>
-
-                <Link href="/products">
-                  <Button variant="outline" className="mt-2 w-full bg-white">
-                    Ver más productos
-                  </Button>
-                </Link>
-              </CardContent>
-            </Card>
           </aside>
         </div>
+
+        {/* CONSEJOS */}
+        <section className="mt-8 grid gap-4 md:grid-cols-3">
+          <div className="rounded-3xl border bg-white p-5 shadow-sm">
+            <CheckCircle className="mb-3 h-6 w-6 text-green-700" />
+            <h3 className="font-black text-slate-950">Revisa bien</h3>
+            <p className="mt-1 text-sm text-slate-500">
+              Pide fotos reales y valida el estado antes de concretar.
+            </p>
+          </div>
+
+          <div className="rounded-3xl border bg-white p-5 shadow-sm">
+            <CheckCircle className="mb-3 h-6 w-6 text-green-700" />
+            <h3 className="font-black text-slate-950">Coordina seguro</h3>
+            <p className="mt-1 text-sm text-slate-500">
+              Elige lugares públicos y evita adelantos innecesarios.
+            </p>
+          </div>
+
+          <div className="rounded-3xl border bg-white p-5 shadow-sm">
+            <CheckCircle className="mb-3 h-6 w-6 text-green-700" />
+            <h3 className="font-black text-slate-950">Guarda evidencia</h3>
+            <p className="mt-1 text-sm text-slate-500">
+              Conserva mensajes, comprobantes y acuerdos realizados.
+            </p>
+          </div>
+        </section>
+
+        {/* CTA FINAL */}
+        <section className="mt-8 overflow-hidden rounded-[2rem] bg-gradient-to-br from-blue-950 via-slate-950 to-blue-900 p-8 text-white shadow-xl md:p-10">
+          <div className="grid gap-6 md:grid-cols-[1fr_auto] md:items-center">
+            <div>
+              <h2 className="text-3xl font-black">
+                ¿Tienes algo para vender?
+              </h2>
+
+              <p className="mt-2 max-w-2xl text-slate-300">
+                Publica tus artículos y permite que otros usuarios te contacten
+                directamente.
+              </p>
+            </div>
+
+            <div className="flex flex-col gap-3 sm:flex-row">
+              <Link href="/seller/dashboard">
+                <Button className="rounded-xl bg-orange-600 hover:bg-orange-700">
+                  Publicar producto
+                </Button>
+              </Link>
+
+              <Link href="/products">
+                <Button
+                  variant="outline"
+                  className="rounded-xl border-white/20 bg-white/10 text-white hover:bg-white/20"
+                >
+                  Ver más productos
+                </Button>
+              </Link>
+            </div>
+          </div>
+        </section>
       </main>
     </div>
   );
