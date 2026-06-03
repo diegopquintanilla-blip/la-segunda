@@ -1,8 +1,38 @@
 'use client';
 
+import {
+  type ChangeEvent,
+  type FormEvent,
+  useEffect,
+  useMemo,
+  useState,
+} from 'react';
+import Link from 'next/link';
+import { useRouter } from 'next/navigation';
+import {
+  AlertCircle,
+  ArrowRight,
+  CheckCircle,
+  Eye,
+  ImagePlus,
+  Loader2,
+  Mail,
+  MapPin,
+  PackagePlus,
+  Phone,
+  Save,
+  ShieldCheck,
+  Sparkles,
+  Trash2,
+  Upload,
+  User,
+} from 'lucide-react';
+
 import { Header } from '@/components/header';
 import { useAuth } from '@/lib/auth-context';
+import { supabase } from '@/lib/supabase/client';
 import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
 import {
   Card,
   CardContent,
@@ -10,1247 +40,1117 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { Input } from '@/components/ui/input';
-import { mockOrders } from '@/lib/mock-data';
-import {
-  createProduct,
-  deleteProduct as deleteSupabaseProduct,
-  listSellerProducts,
-  markProductAsSold,
-  updateProduct,
-  type ProductFormInput,
-} from '@/lib/supabase/products';
-import {
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  ResponsiveContainer,
-  LineChart,
-  Line,
-} from 'recharts';
-import {
-  ShoppingBag,
-  Eye,
-  Heart,
-  Plus,
-  MoreVertical,
-  PackagePlus,
-  AlertTriangle,
-  CheckCircle,
-  Edit3,
-  Trash2,
-  BadgeCheck,
-  X,
-  Upload,
-  ImageIcon,
-  Loader2,
-  RefreshCw,
-  ShieldCheck,
-  Percent,
-} from 'lucide-react';
-import { useRouter } from 'next/navigation';
-import { useEffect, useMemo, useState } from 'react';
 
-type ProductItem = {
-  id: string;
-  sellerId?: string;
-  userId?: string;
-  ownerId?: string;
-  title: string;
-  name?: string;
-  description?: string;
-  category?: string;
-  condition?: string;
-  price: number;
-  city?: string;
-  images?: string[];
-  image?: string;
-  status?: string;
-  views?: number;
-  favoriteCount?: number;
-  isFeatured?: boolean;
-  createdAt?: string;
-  updatedAt?: string;
+type SellerProfile = {
+  id?: string | null;
+  user_id?: string | null;
+  full_name?: string | null;
+  username?: string | null;
+  email?: string | null;
+  phone?: string | null;
+  city?: string | null;
+  avatar_url?: string | null;
 };
 
-const CONTACT_SECURITY_WARNING =
-  'Por seguridad, está prohibido colocar números móviles, WhatsApp, correos electrónicos o datos de contacto en la descripción. Todo aviso que intente compartir contacto externo será eliminado.';
+type ProductRow = {
+  id: string;
+  seller_id?: string | null;
+  user_id?: string | null;
+  owner_id?: string | null;
+  title?: string | null;
+  name?: string | null;
+  description?: string | null;
+  category?: string | null;
+  condition?: string | null;
+  price?: number | string | null;
+  city?: string | null;
+  status?: string | null;
+  images?: string[] | string | null;
+  image?: string | null;
+  image_url?: string | null;
+  thumbnail_url?: string | null;
+  views?: number | string | null;
+  view_count?: number | string | null;
+  views_count?: number | string | null;
+  favorite_count?: number | string | null;
+  favorites_count?: number | string | null;
+  favoriteCount?: number | string | null;
+  created_at?: string | null;
+  createdAt?: string | null;
+};
 
-const PLATFORM_COMMISSION_RATE = 10;
+const DEFAULT_PRODUCT_IMAGE = 'https://placehold.co/700x520?text=La+Segunda';
 
-function hasForbiddenContactInfo(value: string) {
-  const text = value.toLowerCase();
+const CATEGORIES = [
+  'Celulares',
+  'Tecnología',
+  'Laptops',
+  'Hogar',
+  'Muebles',
+  'Electrodomésticos',
+  'Ropa',
+  'Calzado',
+  'Vehículos',
+  'Herramientas',
+  'Deportes',
+  'Otros',
+];
 
-  const emailRegex = /[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}/i;
+const CONDITIONS = ['Nuevo', 'Como nuevo', 'Bueno', 'Regular'];
 
-  const peruMobileRegex =
-    /(?:\+?51[\s.-]*)?(?:9[\s.-]*\d[\s.-]*\d[\s.-]*\d[\s.-]*\d[\s.-]*\d[\s.-]*\d[\s.-]*\d[\s.-]*\d)/;
+function isValidImageUrl(value?: string | null) {
+  if (!value) return false;
 
-  const contactWordsRegex =
-    /(whatsapp|wsp|wasap|telegram|gmail|hotmail|outlook|yahoo|correo|email|e-mail|arroba|celular|móvil|movil|teléfono|telefono|contacto|contáctame|contactame|llámame|llamame|escríbeme|escribeme|inbox|dm)/i;
+  const cleanValue = String(value).trim();
 
   return (
-    emailRegex.test(value) ||
-    peruMobileRegex.test(value) ||
-    contactWordsRegex.test(text)
+    cleanValue.startsWith('http://') ||
+    cleanValue.startsWith('https://') ||
+    cleanValue.startsWith('/') ||
+    cleanValue.startsWith('data:image') ||
+    cleanValue.startsWith('blob:')
   );
 }
 
-export default function SellerDashboardPage() {
-  const { user, isAuthenticated } = useAuth();
-  const router = useRouter();
+function parseImages(value?: string[] | string | null): string[] {
+  if (!value) return [];
 
-  const [sellerProducts, setSellerProducts] = useState<ProductItem[]>([]);
-  const [isProductsLoading, setIsProductsLoading] = useState(true);
-  const [isSavingProduct, setIsSavingProduct] = useState(false);
-  const [pageError, setPageError] = useState('');
-  const [pageSuccess, setPageSuccess] = useState('');
-
-  const [showForm, setShowForm] = useState(false);
-  const [formError, setFormError] = useState('');
-
-  const [openActionsId, setOpenActionsId] = useState<string | null>(null);
-  const [editingProduct, setEditingProduct] = useState<ProductItem | null>(null);
-  const [deleteProduct, setDeleteProduct] = useState<ProductItem | null>(null);
-
-  const [productTitle, setProductTitle] = useState('');
-  const [productDescription, setProductDescription] = useState('');
-  const [productCategory, setProductCategory] = useState('Electrónica');
-  const [productCondition, setProductCondition] = useState('Bueno');
-  const [productPrice, setProductPrice] = useState('');
-  const [productCity, setProductCity] = useState('');
-
-  const [productImageFiles, setProductImageFiles] = useState<File[]>([]);
-  const [productImagePreviews, setProductImagePreviews] = useState<string[]>([]);
-  const [productImageNames, setProductImageNames] = useState<string[]>([]);
-
-  useEffect(() => {
-    if (!isAuthenticated) {
-      router.push('/auth/login');
-    }
-  }, [isAuthenticated, router]);
-
-  const loadSellerProducts = async () => {
-    setIsProductsLoading(true);
-    setPageError('');
-
-    try {
-      const products = await listSellerProducts();
-      setSellerProducts(products as ProductItem[]);
-    } catch (error: any) {
-      setPageError(
-        error?.message || 'No se pudieron cargar tus productos desde Supabase.'
-      );
-      setSellerProducts([]);
-    } finally {
-      setIsProductsLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    if (isAuthenticated && user) {
-      loadSellerProducts();
-    }
-  }, [isAuthenticated, user]);
-
-  if (!isAuthenticated || !user) {
-    return null;
+  if (Array.isArray(value)) {
+    return value.filter(Boolean);
   }
 
-  const publishedCount = sellerProducts.length;
-  const canPublish = true;
+  if (typeof value === 'string') {
+    const cleanValue = value.trim();
 
-  const sellerOrders = mockOrders.filter((order) => order.sellerId === user.id);
+    if (!cleanValue) return [];
 
-  const totalRevenue = sellerOrders.reduce((sum, order) => sum + order.amount, 0);
+    try {
+      const parsed = JSON.parse(cleanValue);
 
-  const totalSales = sellerOrders.filter(
-    (order) => order.status === 'completed'
-  ).length;
-
-  const totalViews = sellerProducts.reduce(
-    (sum: number, product: ProductItem) => sum + Number(product.views || 0),
-    0
-  );
-
-  const totalFavorites = sellerProducts.reduce(
-    (sum: number, product: ProductItem) =>
-      sum + Number(product.favoriteCount || 0),
-    0
-  );
-
-  const commissionEarnings = (totalRevenue * PLATFORM_COMMISSION_RATE) / 100;
-  const netEarnings = totalRevenue - commissionEarnings;
-
-  const chartData = useMemo(() => {
-    return [
-      { month: 'Ene', sales: 0, revenue: 0 },
-      { month: 'Feb', sales: 0, revenue: 0 },
-      { month: 'Mar', sales: 0, revenue: 0 },
-      { month: 'Abr', sales: 0, revenue: 0 },
-      { month: 'May', sales: totalSales, revenue: totalRevenue },
-      { month: 'Jun', sales: 0, revenue: 0 },
-    ];
-  }, [totalSales, totalRevenue]);
-
-  const resetForm = () => {
-    setProductTitle('');
-    setProductDescription('');
-    setProductCategory('Electrónica');
-    setProductCondition('Bueno');
-    setProductPrice('');
-    setProductCity('');
-    setProductImageFiles([]);
-    setProductImagePreviews([]);
-    setProductImageNames([]);
-    setEditingProduct(null);
-    setFormError('');
-  };
-
-  const scrollToPublishForm = () => {
-    window.setTimeout(() => {
-      const formElement = document.getElementById('publicar-nuevo-articulo');
-
-      if (formElement) {
-        formElement.scrollIntoView({
-          behavior: 'smooth',
-          block: 'start',
-        });
+      if (Array.isArray(parsed)) {
+        return parsed.filter(Boolean);
       }
-    }, 250);
-  };
-
-  const openPublishForm = () => {
-    resetForm();
-
-    setPageError('');
-    setPageSuccess('');
-    setFormError('');
-    setEditingProduct(null);
-    setShowForm(true);
-
-    scrollToPublishForm();
-  };
-
-  const fillFormForEdit = (product: ProductItem) => {
-    const existingImages =
-      product.images && product.images.length > 0
-        ? product.images.slice(0, 2)
-        : product.image
-          ? [product.image]
-          : [];
-
-    setEditingProduct(product);
-    setProductTitle(product.title || product.name || '');
-    setProductDescription(product.description || '');
-    setProductCategory(product.category || 'Electrónica');
-    setProductCondition(product.condition || 'Bueno');
-    setProductPrice(String(product.price || ''));
-    setProductCity(product.city || '');
-    setProductImageFiles([]);
-    setProductImagePreviews(existingImages);
-    setProductImageNames(
-      existingImages.map((_, index) => `Imagen actual ${index + 1}`)
-    );
-    setFormError('');
-    setPageError('');
-    setPageSuccess('');
-    setShowForm(true);
-    setOpenActionsId(null);
-    scrollToPublishForm();
-  };
-
-  const handleLocalImagesUpload = (
-    event: React.ChangeEvent<HTMLInputElement>
-  ) => {
-    setFormError('');
-
-    const files = Array.from(event.target.files || []);
-
-    if (files.length === 0) return;
-
-    if (files.length > 2) {
-      setFormError('Solo puedes adjuntar hasta 2 imágenes por producto.');
-      event.target.value = '';
-      return;
+    } catch {
+      return [cleanValue];
     }
 
-    const invalidFile = files.find((file) => !file.type.startsWith('image/'));
+    return [cleanValue];
+  }
 
-    if (invalidFile) {
-      setFormError('Solo puedes adjuntar archivos de imagen.');
-      event.target.value = '';
-      return;
+  return [];
+}
+
+function getProductTitle(product: ProductRow) {
+  return product.title || product.name || 'Producto sin nombre';
+}
+
+function getProductImage(product: ProductRow) {
+  const images = parseImages(product.images);
+
+  const image =
+    product.image_url ||
+    images[0] ||
+    product.image ||
+    product.thumbnail_url ||
+    '';
+
+  return isValidImageUrl(image) ? image : DEFAULT_PRODUCT_IMAGE;
+}
+
+function getProductPrice(product: ProductRow) {
+  return Number(product.price || 0);
+}
+
+function getProductViews(product: ProductRow) {
+  return Number(product.views ?? product.views_count ?? product.view_count ?? 0);
+}
+
+function getProductFavorites(product: ProductRow) {
+  return Number(
+    product.favorite_count ??
+      product.favorites_count ??
+      product.favoriteCount ??
+      0
+  );
+}
+
+function getProductDate(product: ProductRow) {
+  return new Date(product.created_at || product.createdAt || 0).getTime();
+}
+
+function formatDate(date?: string | null) {
+  if (!date) return 'Fecha no disponible';
+
+  try {
+    return new Date(date).toLocaleDateString('es-PE', {
+      day: '2-digit',
+      month: 'short',
+      year: 'numeric',
+    });
+  } catch {
+    return 'Fecha no disponible';
+  }
+}
+
+function getStatusLabel(status?: string | null) {
+  const value = String(status || 'active').toLowerCase();
+
+  if (value === 'active') return 'Disponible';
+  if (value === 'published') return 'Disponible';
+  if (value === 'available') return 'Disponible';
+  if (value === 'reserved') return 'Reservado';
+  if (value === 'sold') return 'Vendido';
+  if (value === 'pending') return 'Pendiente';
+  if (value === 'inactive') return 'Inactivo';
+
+  return 'Disponible';
+}
+
+function getStatusClass(status?: string | null) {
+  const value = String(status || 'active').toLowerCase();
+
+  if (value === 'reserved') {
+    return 'bg-amber-100 text-amber-800 hover:bg-amber-100';
+  }
+
+  if (value === 'sold') {
+    return 'bg-slate-700 text-white hover:bg-slate-700';
+  }
+
+  if (value === 'pending') {
+    return 'bg-slate-100 text-slate-700 hover:bg-slate-100';
+  }
+
+  return 'bg-blue-950 text-white hover:bg-blue-950';
+}
+
+export default function SellerDashboardPage() {
+  const router = useRouter();
+  const { user, isAuthenticated, isLoading } = useAuth();
+
+  const currentUser = user as any;
+
+  const [profile, setProfile] = useState<SellerProfile | null>(null);
+  const [sellerProducts, setSellerProducts] = useState<ProductRow[]>([]);
+
+  const [isLoadingData, setIsLoadingData] = useState(true);
+  const [isSaving, setIsSaving] = useState(false);
+  const [isUploadingImage, setIsUploadingImage] = useState(false);
+  const [isDeletingProductId, setIsDeletingProductId] = useState<string | null>(
+    null
+  );
+
+  const [message, setMessage] = useState('');
+  const [errorMessage, setErrorMessage] = useState('');
+
+  const [title, setTitle] = useState('');
+  const [description, setDescription] = useState('');
+  const [category, setCategory] = useState('Celulares');
+  const [condition, setCondition] = useState('Bueno');
+  const [price, setPrice] = useState('');
+  const [city, setCity] = useState('');
+  const [imageUrl, setImageUrl] = useState('');
+
+  useEffect(() => {
+    if (!isLoading && !isAuthenticated) {
+      router.push('/auth/login');
     }
+  }, [isLoading, isAuthenticated, router]);
 
-    const oversizedFile = files.find((file) => file.size > 5 * 1024 * 1024);
+  useEffect(() => {
+    const loadData = async () => {
+      if (!user?.id) return;
 
-    if (oversizedFile) {
-      setFormError('Cada imagen no debe superar los 5 MB.');
-      event.target.value = '';
-      return;
-    }
+      setIsLoadingData(true);
+      setErrorMessage('');
 
-    const previews = files.map((file) => URL.createObjectURL(file));
+      try {
+        let loadedProfile: SellerProfile | null = null;
 
-    setProductImageFiles(files.slice(0, 2));
-    setProductImagePreviews(previews.slice(0, 2));
-    setProductImageNames(files.map((file) => file.name).slice(0, 2));
+        const profileByUserId = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('user_id', user.id)
+          .maybeSingle();
 
-    event.target.value = '';
-  };
+        if (!profileByUserId.error && profileByUserId.data) {
+          loadedProfile = profileByUserId.data as SellerProfile;
+        }
 
-  const handleRemoveImage = (indexToRemove: number) => {
-    if (editingProduct && productImageFiles.length === 0) {
-      setFormError(
-        'Para cambiar las imágenes actuales, adjunta nuevas imágenes. Las nuevas reemplazarán a las anteriores.'
-      );
-      return;
-    }
+        if (!loadedProfile) {
+          const profileById = await supabase
+            .from('profiles')
+            .select('*')
+            .eq('id', user.id)
+            .maybeSingle();
 
-    setProductImageFiles((currentFiles) =>
-      currentFiles.filter((_, index) => index !== indexToRemove)
-    );
+          if (!profileById.error && profileById.data) {
+            loadedProfile = profileById.data as SellerProfile;
+          }
+        }
 
-    setProductImagePreviews((currentPreviews) =>
-      currentPreviews.filter((_, index) => index !== indexToRemove)
-    );
+        setProfile(loadedProfile);
 
-    setProductImageNames((currentNames) =>
-      currentNames.filter((_, index) => index !== indexToRemove)
-    );
-  };
+        const loadedCity =
+          loadedProfile?.city || currentUser?.city || currentUser?.location || '';
 
-  const validateProductForm = () => {
-    if (!productTitle.trim()) {
-      return 'Ingresa el nombre del producto.';
-    }
+        setCity(loadedCity);
 
-    if (!productDescription.trim()) {
-      return 'Ingresa una descripción del producto.';
-    }
+        const { data: productsBySellerId, error: sellerIdError } =
+          await supabase
+            .from('products')
+            .select('*')
+            .eq('seller_id', user.id)
+            .order('created_at', { ascending: false });
 
-    if (hasForbiddenContactInfo(productDescription)) {
-      return CONTACT_SECURITY_WARNING;
-    }
+        if (!sellerIdError && Array.isArray(productsBySellerId)) {
+          setSellerProducts(productsBySellerId as ProductRow[]);
+          return;
+        }
 
-    if (!productPrice || Number(productPrice) <= 0) {
-      return 'Ingresa un precio válido.';
-    }
+        const { data: allProducts, error: allProductsError } = await supabase
+          .from('products')
+          .select('*')
+          .order('created_at', { ascending: false });
 
-    if (!productCity.trim()) {
-      return 'Ingresa la ciudad donde se encuentra el producto.';
-    }
+        if (allProductsError) {
+          throw allProductsError;
+        }
 
-    if (!editingProduct && productImageFiles.length === 0) {
-      return 'Adjunta al menos una imagen del producto.';
-    }
+        const filteredProducts = ((allProducts || []) as ProductRow[]).filter(
+          (product) => {
+            return (
+              product.seller_id === user.id ||
+              product.user_id === user.id ||
+              product.owner_id === user.id
+            );
+          }
+        );
 
-    if (productImageFiles.length > 2) {
-      return 'Solo puedes adjuntar hasta 2 imágenes.';
-    }
+        setSellerProducts(filteredProducts);
+      } catch (error: any) {
+        console.error('[La Segunda] Error cargando panel:', error?.message);
 
-    return '';
-  };
-
-  const handleCreateOrUpdateProduct = async (event: React.FormEvent) => {
-    event.preventDefault();
-
-    if (isSavingProduct) return;
-
-    setFormError('');
-    setPageError('');
-    setPageSuccess('');
-
-    const validationError = validateProductForm();
-
-    if (validationError) {
-      setFormError(validationError);
-      return;
-    }
-
-    const input: ProductFormInput = {
-      title: productTitle.trim(),
-      description: productDescription.trim(),
-      category: productCategory,
-      condition: productCondition,
-      price: Number(productPrice),
-      city: productCity.trim(),
+        setErrorMessage(
+          error?.message || 'No se pudo cargar tu panel de vendedor.'
+        );
+      } finally {
+        setIsLoadingData(false);
+      }
     };
 
-    setIsSavingProduct(true);
+    if (isAuthenticated && user?.id) {
+      loadData();
+    }
+  }, [isAuthenticated, user?.id, currentUser?.city, currentUser?.location]);
+
+  const sellerName =
+    profile?.full_name ||
+    profile?.username ||
+    currentUser?.name ||
+    currentUser?.email?.split('@')?.[0] ||
+    'Vendedor La Segunda';
+
+  const sellerEmail = profile?.email || currentUser?.email || '';
+  const sellerPhone = profile?.phone || currentUser?.phone || '';
+  const sellerCity = profile?.city || currentUser?.city || city || 'Perú';
+
+  const hasPublicContact = Boolean(sellerName && sellerEmail && sellerPhone);
+
+  const previewImage = useMemo(() => {
+    return isValidImageUrl(imageUrl) ? imageUrl : DEFAULT_PRODUCT_IMAGE;
+  }, [imageUrl]);
+
+  const sortedProducts = useMemo(() => {
+    return [...sellerProducts].sort((a, b) => getProductDate(b) - getProductDate(a));
+  }, [sellerProducts]);
+
+  const totalViews = sortedProducts.reduce(
+    (sum, product) => sum + getProductViews(product),
+    0
+  );
+
+  const totalFavorites = sortedProducts.reduce(
+    (sum, product) => sum + getProductFavorites(product),
+    0
+  );
+
+  const resetForm = () => {
+    setTitle('');
+    setDescription('');
+    setCategory('Celulares');
+    setCondition('Bueno');
+    setPrice('');
+    setImageUrl('');
+  };
+
+  const handleUploadImage = async (event: ChangeEvent<HTMLInputElement>) => {
+    setMessage('');
+    setErrorMessage('');
+
+    const file = event.target.files?.[0];
+
+    if (!file) return;
+
+    if (!user?.id) {
+      setErrorMessage('Debes iniciar sesión para subir imágenes.');
+      return;
+    }
+
+    if (!file.type.startsWith('image/')) {
+      setErrorMessage('Solo puedes subir archivos de imagen.');
+      return;
+    }
+
+    if (file.size > 5 * 1024 * 1024) {
+      setErrorMessage('La imagen no debe superar los 5 MB.');
+      return;
+    }
+
+    setIsUploadingImage(true);
 
     try {
-      if (editingProduct) {
-        await updateProduct(editingProduct.id, input, productImageFiles);
+      const fileExt = file.name.split('.').pop() || 'jpg';
+      const fileName = `product-${Date.now()}.${fileExt}`;
+      const filePath = `${user.id}/${fileName}`;
 
-        setPageSuccess('Producto actualizado correctamente en Supabase.');
-      } else {
-        await createProduct(input, productImageFiles);
+      const { error: uploadError } = await supabase.storage
+        .from('product-images')
+        .upload(filePath, file, {
+          cacheControl: '3600',
+          upsert: true,
+        });
 
-        setPageSuccess('Producto publicado correctamente en Supabase.');
+      if (uploadError) {
+        throw uploadError;
       }
 
-      await loadSellerProducts();
+      const { data } = supabase.storage
+        .from('product-images')
+        .getPublicUrl(filePath);
 
-      setShowForm(false);
-      resetForm();
+      setImageUrl(data.publicUrl);
+      setMessage('Imagen cargada correctamente.');
     } catch (error: any) {
-      setFormError(
-        error?.message || 'No se pudo guardar el producto en Supabase.'
+      console.error('[La Segunda] Error subiendo imagen:', error?.message);
+
+      setErrorMessage(
+        error?.message ||
+          'No se pudo subir la imagen. Verifica que exista el bucket product-images en Supabase.'
       );
     } finally {
-      setIsSavingProduct(false);
+      setIsUploadingImage(false);
+      event.target.value = '';
     }
   };
 
-  const handleMarkAsSold = async (productId: string) => {
-    setPageError('');
-    setPageSuccess('');
+  const handleCreateProduct = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
 
-    try {
-      await markProductAsSold(productId);
-      await loadSellerProducts();
+    setMessage('');
+    setErrorMessage('');
 
-      setPageSuccess('Producto marcado como vendido.');
-      setOpenActionsId(null);
-    } catch (error: any) {
-      setPageError(
-        error?.message || 'No se pudo marcar el producto como vendido.'
+    if (!user?.id) {
+      setErrorMessage('Debes iniciar sesión para publicar un producto.');
+      return;
+    }
+
+    if (!title.trim()) {
+      setErrorMessage('Ingresa el nombre del producto.');
+      return;
+    }
+
+    if (!description.trim()) {
+      setErrorMessage('Ingresa una descripción del producto.');
+      return;
+    }
+
+    if (!price || Number(price) <= 0) {
+      setErrorMessage('Ingresa un precio válido.');
+      return;
+    }
+
+    if (!city.trim()) {
+      setErrorMessage('Ingresa la ciudad del producto.');
+      return;
+    }
+
+    if (!hasPublicContact) {
+      setErrorMessage(
+        'Completa tu nombre, correo y teléfono en tu perfil antes de publicar.'
       );
+      return;
     }
-  };
 
-  const handleDeleteProduct = async () => {
-    if (!deleteProduct) return;
-
-    setPageError('');
-    setPageSuccess('');
+    setIsSaving(true);
 
     try {
-      await deleteSupabaseProduct(deleteProduct.id);
-      await loadSellerProducts();
+      const finalImage = imageUrl.trim();
 
-      setPageSuccess('Producto eliminado correctamente.');
-      setDeleteProduct(null);
-      setOpenActionsId(null);
+      const payload = {
+        seller_id: user.id,
+        title: title.trim(),
+        description: description.trim(),
+        category,
+        condition,
+        price: Number(price),
+        city: city.trim(),
+        status: 'active',
+        images: finalImage ? [finalImage] : [],
+        image_url: finalImage || null,
+        views: 0,
+        favorite_count: 0,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      };
+
+      const { data, error } = await supabase
+        .from('products')
+        .insert(payload)
+        .select('*')
+        .single();
+
+      if (error) {
+        throw error;
+      }
+
+      const newProduct = data as ProductRow;
+
+      setSellerProducts((currentProducts) => [newProduct, ...currentProducts]);
+      setMessage('Producto publicado correctamente.');
+
+      resetForm();
+
+      setTimeout(() => {
+        router.push(`/product/${newProduct.id}`);
+      }, 900);
     } catch (error: any) {
-      setPageError(error?.message || 'No se pudo eliminar el producto.');
+      console.error('[La Segunda] Error publicando producto:', error?.message);
+
+      setErrorMessage(
+        error?.message || 'No se pudo publicar el producto. Intenta nuevamente.'
+      );
+    } finally {
+      setIsSaving(false);
     }
   };
 
-  const getProductImage = (product: ProductItem) => {
-    return (
-      product.images?.[0] ||
-      product.image ||
-      'https://placehold.co/100x100?text=La+Segunda'
+  const handleDeleteProduct = async (productId: string) => {
+    const confirmed = window.confirm(
+      '¿Seguro que deseas eliminar este producto?'
     );
+
+    if (!confirmed) return;
+
+    setIsDeletingProductId(productId);
+    setMessage('');
+    setErrorMessage('');
+
+    try {
+      const { error } = await supabase
+        .from('products')
+        .delete()
+        .eq('id', productId);
+
+      if (error) {
+        throw error;
+      }
+
+      setSellerProducts((currentProducts) =>
+        currentProducts.filter((product) => product.id !== productId)
+      );
+
+      setMessage('Producto eliminado correctamente.');
+    } catch (error: any) {
+      setErrorMessage(
+        error?.message || 'No se pudo eliminar el producto. Intenta nuevamente.'
+      );
+    } finally {
+      setIsDeletingProductId(null);
+    }
   };
 
-  const getStatusLabel = (status?: string) => {
-    if (status === 'sold') return 'Vendido';
-    if (status === 'reserved') return 'Reservado';
-    if (status === 'pending') return 'Pendiente';
-    return 'Activo';
-  };
-
-  const getStatusVariant = (status?: string) => {
-    if (status === 'sold') return 'secondary';
-    if (status === 'pending') return 'outline';
-    return 'default';
-  };
+  if (isLoading || !isAuthenticated || !user) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-[#F7F8FB]">
+        <div className="text-center">
+          <Loader2 className="mx-auto mb-3 h-8 w-8 animate-spin text-blue-950" />
+          <p className="text-sm text-slate-500">
+            Cargando panel de vendedor...
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <div className="min-h-screen bg-slate-50">
+    <div className="min-h-screen bg-[#F7F8FB] text-slate-950">
       <Header />
 
-      <div className="container mx-auto px-4 py-8">
-        <div className="mb-8 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-          <div>
-            <h1 className="text-3xl font-bold">Panel de publicaciones</h1>
-            <p className="text-muted-foreground">
-              Publica productos sin membresía. La comisión se cobra por contacto seguro.
-            </p>
-          </div>
+      <main className="mx-auto max-w-7xl px-4 py-6">
+        {/* CABECERA */}
+        <section className="mb-6 overflow-hidden rounded-[2rem] bg-gradient-to-br from-slate-950 via-blue-950 to-slate-900 p-6 text-white shadow-xl md:p-10">
+          <div className="grid gap-8 lg:grid-cols-[1fr_390px] lg:items-center">
+            <div>
+              <h1 className="max-w-3xl text-3xl font-black leading-tight tracking-tight md:text-5xl">
+                Publica tus productos y conecta con compradores
+              </h1>
 
-          <div className="flex flex-col gap-2 sm:flex-row">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={loadSellerProducts}
-              disabled={isProductsLoading}
-            >
-              <RefreshCw className="mr-2 h-4 w-4" />
-              Actualizar
-            </Button>
+              <p className="mt-4 max-w-2xl text-base leading-relaxed text-slate-200 md:text-lg">
+                Sube fotos, agrega precio, describe el estado del artículo y
+                permite que usuarios interesados se comuniquen contigo.
+              </p>
 
-            <Button
-              type="button"
-              onClick={openPublishForm}
-              disabled={isProductsLoading || isSavingProduct}
-            >
-              <Plus className="mr-2 h-4 w-4" />
-              Publicar artículo
-            </Button>
-          </div>
-        </div>
+              <div className="mt-7 flex flex-col gap-3 sm:flex-row">
+                <a href="#publicar">
+                  <Button
+                    size="lg"
+                    className="h-12 rounded-xl bg-orange-600 px-6 text-base hover:bg-orange-700"
+                  >
+                    <PackagePlus className="mr-2 h-5 w-5" />
+                    Crear publicación
+                  </Button>
+                </a>
 
-        {pageSuccess && (
-          <div className="mb-6 rounded-xl border border-green-200 bg-green-50 p-4 text-sm font-medium text-green-700">
-            {pageSuccess}
-          </div>
-        )}
-
-        {pageError && (
-          <div className="mb-6 rounded-xl border border-red-200 bg-red-50 p-4 text-sm font-medium text-red-700">
-            {pageError}
-          </div>
-        )}
-
-        <Card className="mb-8 border-2">
-          <CardHeader>
-            <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-              <div>
-                <CardTitle className="flex items-center gap-2">
-                  <PackagePlus className="h-5 w-5 text-primary" />
-                  Control de publicaciones
-                </CardTitle>
-                <CardDescription>
-                  Puedes publicar sin membresía. La Segunda Market cobra el 10% cuando un comprador paga el contacto protegido.
-                </CardDescription>
-              </div>
-
-              <div className="flex flex-wrap gap-2">
-                <Badge className="bg-blue-100 text-blue-800">
-                  Sin membresía
-                </Badge>
-
-                <Badge variant="outline">
-                  Comisión {PLATFORM_COMMISSION_RATE}%
-                </Badge>
-              </div>
-            </div>
-          </CardHeader>
-
-          <CardContent>
-            <div className="grid gap-4 md:grid-cols-4">
-              <div className="rounded-xl bg-slate-100 p-4">
-                <p className="text-sm text-muted-foreground">Modelo actual</p>
-                <p className="text-xl font-bold">Comisión por contacto</p>
-                <p className="text-sm text-muted-foreground">Sin pago mensual</p>
-              </div>
-
-              <div className="rounded-xl bg-slate-100 p-4">
-                <p className="text-sm text-muted-foreground">Publicados</p>
-                <p className="text-3xl font-bold">{publishedCount}</p>
-              </div>
-
-              <div className="rounded-xl bg-slate-100 p-4">
-                <p className="text-sm text-muted-foreground">Límite</p>
-                <p className="text-3xl font-bold">∞</p>
-              </div>
-
-              <div className="rounded-xl bg-slate-100 p-4">
-                <p className="text-sm text-muted-foreground">Comisión</p>
-                <p className="text-3xl font-bold">{PLATFORM_COMMISSION_RATE}%</p>
+                <Link href="/products">
+                  <Button
+                    size="lg"
+                    variant="outline"
+                    className="h-12 rounded-xl border-white/20 bg-white/10 px-6 text-base text-white hover:bg-white/20"
+                  >
+                    Ver productos
+                    <ArrowRight className="ml-2 h-5 w-5" />
+                  </Button>
+                </Link>
               </div>
             </div>
 
-            <div className="mt-5 rounded-xl border border-blue-200 bg-blue-50 p-4 text-sm text-blue-800">
-              <div className="mb-1 flex items-center gap-2 font-semibold">
-                <ShieldCheck className="h-4 w-4" />
-                Nuevo modelo comercial
+            <div className="rounded-3xl border border-white/10 bg-white/10 p-5 backdrop-blur">
+              <p className="mb-4 text-sm font-medium text-slate-200">
+                Tu resumen
+              </p>
+
+              <div className="grid grid-cols-3 gap-3 text-center">
+                <div className="rounded-2xl bg-white/10 p-4">
+                  <p className="text-2xl font-black">{sortedProducts.length}</p>
+                  <p className="mt-1 text-xs text-slate-300">Productos</p>
+                </div>
+
+                <div className="rounded-2xl bg-white/10 p-4">
+                  <p className="text-2xl font-black">{totalViews}</p>
+                  <p className="mt-1 text-xs text-slate-300">Vistas</p>
+                </div>
+
+                <div className="rounded-2xl bg-white/10 p-4">
+                  <p className="text-2xl font-black">{totalFavorites}</p>
+                  <p className="mt-1 text-xs text-slate-300">Favoritos</p>
+                </div>
               </div>
-              Los vendedores pueden publicar productos sin comprar membresías.
-              La comisión se cobra cuando el comprador usa el contacto protegido
-              y paga mediante Mercado Pago.
-            </div>
-          </CardContent>
-        </Card>
 
-        {showForm && (
-          <Card
-            id="publicar-nuevo-articulo"
-            className="mb-8 scroll-mt-28 border-2 border-primary/20"
-          >
-            <CardHeader>
-              <div className="flex items-start justify-between gap-4">
-                <div>
-                  <CardTitle>
-                    {editingProduct ? 'Editar producto' : 'Publicar nuevo artículo'}
-                  </CardTitle>
-                  <CardDescription>
-                    {editingProduct
-                      ? 'Actualiza la información del producto publicado.'
-                      : 'El producto se guardará en Supabase y las imágenes en Storage.'}
-                  </CardDescription>
-                </div>
-
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  disabled={isSavingProduct}
-                  onClick={() => {
-                    setShowForm(false);
-                    resetForm();
-                  }}
-                >
-                  <X className="h-4 w-4" />
-                </Button>
-              </div>
-            </CardHeader>
-
-            <CardContent>
-              {formError && (
-                <div className="mb-4 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
-                  {formError}
-                </div>
-              )}
-
-              <form onSubmit={handleCreateOrUpdateProduct} className="space-y-4">
-                <div className="grid gap-4 md:grid-cols-2">
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium">Nombre del producto</label>
-                    <Input
-                      value={productTitle}
-                      onChange={(event) => setProductTitle(event.target.value)}
-                      placeholder="Ejemplo: iPhone 13 Pro"
-                      disabled={isSavingProduct}
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium">Precio</label>
-                    <Input
-                      type="number"
-                      value={productPrice}
-                      onChange={(event) => setProductPrice(event.target.value)}
-                      placeholder="Ejemplo: 1500"
-                      disabled={isSavingProduct}
-                    />
-                  </div>
-                </div>
+              <div className="mt-4 rounded-2xl bg-white/10 p-4 text-sm text-slate-200">
+                <p className="mb-2 font-semibold text-white">
+                  Datos de vendedor
+                </p>
 
                 <div className="space-y-2">
-                  <label className="text-sm font-medium">Descripción</label>
+                  <p className="flex items-center gap-2">
+                    <User className="h-4 w-4" />
+                    {sellerName}
+                  </p>
 
-                  <textarea
-                    value={productDescription}
-                    onChange={(event) => setProductDescription(event.target.value)}
-                    placeholder="Describe el estado, uso y detalles del producto"
-                    rows={5}
-                    disabled={isSavingProduct}
-                    className="w-full resize-none rounded-md border bg-background px-3 py-2 text-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20 disabled:cursor-not-allowed disabled:opacity-50"
-                  />
+                  <p className="flex items-center gap-2">
+                    <Phone className="h-4 w-4" />
+                    {sellerPhone || 'Teléfono pendiente'}
+                  </p>
 
-                  <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
-                    <div className="mb-1 flex items-center gap-2 font-semibold">
-                      <AlertTriangle className="h-4 w-4" />
-                      Aviso de seguridad
-                    </div>
-
-                    <p>
-                      Por seguridad, no coloques números móviles, WhatsApp,
-                      correos electrónicos ni datos de contacto. Todo aviso que
-                      intente compartir contacto externo será eliminado.
-                    </p>
-                  </div>
-
-                  {hasForbiddenContactInfo(productDescription) && (
-                    <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">
-                      Se detectó posible información de contacto. Elimina números
-                      móviles, correos o referencias a WhatsApp para poder publicar.
-                    </div>
-                  )}
+                  <p className="flex items-center gap-2 break-all">
+                    <Mail className="h-4 w-4 flex-shrink-0" />
+                    {sellerEmail || 'Correo pendiente'}
+                  </p>
                 </div>
 
-                <div className="grid gap-4 md:grid-cols-3">
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium">Categoría</label>
-                    <select
-                      value={productCategory}
-                      onChange={(event) => setProductCategory(event.target.value)}
-                      disabled={isSavingProduct}
-                      className="w-full rounded-md border bg-background px-3 py-2 text-sm"
-                    >
-                      <option>Electrónica</option>
-                      <option>Celulares</option>
-                      <option>Laptops</option>
-                      <option>Ropa</option>
-                      <option>Hogar</option>
-                      <option>Muebles</option>
-                      <option>Vehículos</option>
-                      <option>Deportes</option>
-                      <option>Música</option>
-                      <option>Libros</option>
-                      <option>Otros</option>
-                    </select>
-                  </div>
+                {!hasPublicContact && (
+                  <Link href="/profile">
+                    <Button className="mt-4 w-full rounded-xl bg-orange-600 hover:bg-orange-700">
+                      Completar perfil
+                    </Button>
+                  </Link>
+                )}
+              </div>
+            </div>
+          </div>
+        </section>
 
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium">Estado</label>
-                    <select
-                      value={productCondition}
-                      onChange={(event) => setProductCondition(event.target.value)}
-                      disabled={isSavingProduct}
-                      className="w-full rounded-md border bg-background px-3 py-2 text-sm"
-                    >
-                      <option>Nuevo</option>
-                      <option>Como nuevo</option>
-                      <option>Bueno</option>
-                      <option>Regular</option>
-                    </select>
-                  </div>
-
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium">Ciudad</label>
-                    <Input
-                      value={productCity}
-                      onChange={(event) => setProductCity(event.target.value)}
-                      placeholder="Ejemplo: Lima"
-                      disabled={isSavingProduct}
-                    />
-                  </div>
-                </div>
-
-                <div className="space-y-3 rounded-xl border border-dashed bg-slate-50 p-4">
-                  <div>
-                    <label className="text-sm font-medium">
-                      Adjuntar imágenes del producto
-                    </label>
-                    <p className="mt-1 text-xs text-muted-foreground">
-                      Puedes adjuntar hasta 2 imágenes. Se subirán a Supabase Storage.
-                      JPG, PNG o WEBP. Máximo 5 MB por imagen.
-                    </p>
-                  </div>
-
-                  <label className="flex cursor-pointer flex-col items-center justify-center rounded-xl border bg-white p-6 text-center transition hover:bg-slate-100">
-                    <Upload className="mb-2 h-8 w-8 text-primary" />
-                    <span className="text-sm font-semibold">
-                      Haz clic para adjuntar hasta 2 imágenes
-                    </span>
-                    <span className="mt-1 text-xs text-muted-foreground">
-                      {editingProduct
-                        ? 'Si adjuntas nuevas imágenes, reemplazarán a las actuales'
-                        : 'Selecciona una o dos imágenes del producto'}
-                    </span>
-
-                    <input
-                      type="file"
-                      accept="image/png,image/jpeg,image/jpg,image/webp"
-                      multiple
-                      onChange={handleLocalImagesUpload}
-                      disabled={isSavingProduct}
-                      className="hidden"
-                    />
-                  </label>
-
-                  {productImageNames.length > 0 && (
-                    <div className="space-y-2">
-                      {productImageNames.map((imageName, index) => (
-                        <div
-                          key={`${imageName}-${index}`}
-                          className="flex items-center justify-between rounded-lg border bg-white px-3 py-2 text-sm text-slate-700"
-                        >
-                          <span>
-                            Imagen {index + 1}: <strong>{imageName}</strong>
-                          </span>
-
-                          <button
-                            type="button"
-                            disabled={isSavingProduct}
-                            onClick={() => handleRemoveImage(index)}
-                            className="text-xs font-semibold text-red-600 hover:text-red-700 disabled:opacity-50"
-                          >
-                            Quitar
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-
-                  {productImagePreviews.length > 0 ? (
-                    <div className="rounded-xl border bg-white p-3">
-                      <p className="mb-3 text-xs font-medium text-muted-foreground">
-                        Vista previa:
-                      </p>
-
-                      <div className="grid gap-3 sm:grid-cols-2">
-                        {productImagePreviews.map((image, index) => (
-                          <div key={`${image}-${index}`} className="relative">
-                            <img
-                              src={image}
-                              alt={`Vista previa ${index + 1}`}
-                              className="h-40 w-full rounded-lg border object-cover"
-                            />
-
-                            <span className="absolute left-2 top-2 rounded-full bg-black/70 px-2 py-1 text-xs font-semibold text-white">
-                              Imagen {index + 1}
-                            </span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="flex items-center gap-2 rounded-lg border bg-white px-3 py-2 text-sm text-muted-foreground">
-                      <ImageIcon className="h-4 w-4" />
-                      Aún no has adjuntado imágenes.
-                    </div>
-                  )}
-                </div>
-
-                <div className="flex flex-col gap-3 sm:flex-row">
-                  <Button type="submit" disabled={isSavingProduct}>
-                    {isSavingProduct ? (
-                      <>
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        Guardando...
-                      </>
-                    ) : (
-                      <>
-                        <CheckCircle className="mr-2 h-4 w-4" />
-                        {editingProduct ? 'Guardar cambios' : 'Publicar producto'}
-                      </>
-                    )}
-                  </Button>
-
-                  <Button
-                    type="button"
-                    variant="outline"
-                    disabled={isSavingProduct}
-                    onClick={() => {
-                      setShowForm(false);
-                      resetForm();
-                    }}
-                  >
-                    Cancelar
-                  </Button>
-                </div>
-              </form>
-            </CardContent>
-          </Card>
+        {message && (
+          <div className="mb-5 flex items-center gap-2 rounded-2xl border border-green-200 bg-green-50 p-4 text-sm text-green-700">
+            <CheckCircle className="h-4 w-4" />
+            {message}
+          </div>
         )}
 
-        <div className="mb-8 grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground">
-                Ingresos totales
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">
-                S/ {totalRevenue.toLocaleString()}
-              </div>
-              <p className="mt-1 text-xs text-muted-foreground">
-                Estimado según ventas registradas
+        {errorMessage && (
+          <div className="mb-5 flex items-center gap-2 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+            <AlertCircle className="h-4 w-4" />
+            {errorMessage}
+          </div>
+        )}
+
+        {isLoadingData ? (
+          <div className="flex min-h-[45vh] items-center justify-center rounded-[2rem] border border-dashed bg-white">
+            <div className="text-center">
+              <Loader2 className="mx-auto mb-3 h-8 w-8 animate-spin text-blue-950" />
+              <p className="text-sm text-slate-500">
+                Cargando información...
               </p>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground">
-                Ventas completadas
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{totalSales}</div>
-              <p className="mt-1 text-xs text-muted-foreground">
-                {sellerOrders.length} total
-              </p>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground">
-                Vistas totales
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">
-                {totalViews.toLocaleString()}
-              </div>
-              <p className="mt-1 text-xs text-muted-foreground">
-                De {sellerProducts.length} productos
-              </p>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground">
-                Favoritos
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">
-                {totalFavorites.toLocaleString()}
-              </div>
-              <p className="mt-1 text-xs text-muted-foreground">
-                Guardados por compradores
-              </p>
-            </CardContent>
-          </Card>
-        </div>
-
-        <div className="mb-8 grid gap-6 lg:grid-cols-2">
-          <Card>
-            <CardHeader>
-              <CardTitle>Ventas mensuales</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <ResponsiveContainer width="100%" height={300}>
-                <BarChart data={chartData}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="month" />
-                  <YAxis />
-                  <Tooltip />
-                  <Bar dataKey="sales" fill="var(--color-primary)" />
-                </BarChart>
-              </ResponsiveContainer>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle>Ingresos mensuales</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <ResponsiveContainer width="100%" height={300}>
-                <LineChart data={chartData}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="month" />
-                  <YAxis />
-                  <Tooltip />
-                  <Line
-                    type="monotone"
-                    dataKey="revenue"
-                    stroke="var(--color-primary)"
-                  />
-                </LineChart>
-              </ResponsiveContainer>
-            </CardContent>
-          </Card>
-        </div>
-
-        <div className="mb-8 grid gap-6 lg:grid-cols-2">
-          <Card>
-            <CardHeader>
-              <CardTitle>Modelo comercial</CardTitle>
-              <CardDescription>
-                Ya no existen membresías ni límites por plan.
-              </CardDescription>
-            </CardHeader>
-
-            <CardContent className="space-y-4">
-              <div className="flex items-center justify-between gap-4 rounded-xl bg-slate-50 p-4">
-                <div>
-                  <div className="font-semibold">
-                    Comisión por contacto seguro
-                  </div>
-                  <div className="text-sm text-muted-foreground">
-                    El comprador paga el 10% del precio del producto para contactar al vendedor.
-                  </div>
-                </div>
-
-                <Badge className="bg-blue-100 text-blue-800">
-                  {PLATFORM_COMMISSION_RATE}%
-                </Badge>
-              </div>
-
-              <div className="rounded-xl border border-blue-200 bg-blue-50 p-4 text-sm text-blue-800">
-                <div className="mb-1 flex items-center gap-2 font-semibold">
-                  <Percent className="h-4 w-4" />
-                  Ejemplo
-                </div>
-                Producto de S/ 100 → contacto seguro de S/ 10 mediante Mercado Pago.
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle>Resumen de ganancias</CardTitle>
-              <CardDescription>Período actual</CardDescription>
-            </CardHeader>
-
-            <CardContent className="space-y-4">
-              <div className="space-y-2 text-sm">
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Ingresos brutos:</span>
-                  <span className="font-medium">
-                    S/ {totalRevenue.toLocaleString()}
-                  </span>
-                </div>
-
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">
-                    Comisión estimada ({PLATFORM_COMMISSION_RATE}%):
-                  </span>
-                  <span className="font-medium">
-                    S/ {commissionEarnings.toLocaleString()}
-                  </span>
-                </div>
-
-                <div className="flex justify-between border-t pt-2">
-                  <span className="font-semibold">Referencia neta:</span>
-                  <span className="font-bold text-primary">
-                    S/ {netEarnings.toLocaleString()}
-                  </span>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-
-        <Card className="mb-8">
-          <CardHeader className="flex flex-row items-center justify-between">
-            <div>
-              <CardTitle>Mis productos</CardTitle>
-              <CardDescription>
-                Administra tus productos publicados en Supabase.
-              </CardDescription>
             </div>
-
-            <Button
-              type="button"
-              size="sm"
-              onClick={openPublishForm}
-              disabled={isProductsLoading || isSavingProduct}
+          </div>
+        ) : (
+          <div className="grid gap-6 lg:grid-cols-[1fr_390px]">
+            {/* FORMULARIO */}
+            <Card
+              id="publicar"
+              className="rounded-[2rem] border-slate-200 bg-white shadow-sm"
             >
-              <Plus className="mr-1 h-4 w-4" />
-              Nuevo
-            </Button>
-          </CardHeader>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-2xl font-black text-slate-950">
+                  <PackagePlus className="h-6 w-6 text-blue-950" />
+                  Crear nueva publicación
+                </CardTitle>
 
-          <CardContent>
-            {isProductsLoading ? (
-              <div className="py-12 text-center text-muted-foreground">
-                <Loader2 className="mx-auto mb-4 h-8 w-8 animate-spin" />
-                Cargando tus productos...
-              </div>
-            ) : sellerProducts.length > 0 ? (
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead className="border-b">
-                    <tr>
-                      <th className="p-2 text-left">Producto</th>
-                      <th className="p-2 text-left">Precio</th>
-                      <th className="p-2 text-left">Vistas</th>
-                      <th className="p-2 text-left">Favoritos</th>
-                      <th className="p-2 text-left">Estado</th>
-                      <th className="p-2 text-left">Acciones</th>
-                    </tr>
-                  </thead>
+                <CardDescription>
+                  Completa la información principal para que tu producto se vea
+                  claro y confiable.
+                </CardDescription>
+              </CardHeader>
 
-                  <tbody>
-                    {sellerProducts.map((product) => (
-                      <tr key={product.id} className="border-b hover:bg-muted/50">
-                        <td className="p-2">
-                          <div className="flex items-center gap-2">
-                            <img
-                              src={getProductImage(product)}
-                              alt={product.title}
-                              className="h-10 w-10 rounded object-cover"
-                            />
-                            <span className="line-clamp-1 font-medium">
-                              {product.title}
-                            </span>
-                          </div>
-                        </td>
+              <CardContent>
+                <form onSubmit={handleCreateProduct} className="space-y-5">
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <div className="space-y-2 md:col-span-2">
+                      <label className="text-sm font-semibold text-slate-700">
+                        Nombre del producto
+                      </label>
 
-                        <td className="p-2">
-                          S/ {Number(product.price || 0).toLocaleString()}
-                        </td>
+                      <input
+                        value={title}
+                        onChange={(event) => setTitle(event.target.value)}
+                        placeholder="Ejemplo: iPhone 12 Pro 128GB"
+                        className="h-12 w-full rounded-xl border border-slate-200 bg-slate-50 px-4 text-sm outline-none transition focus:border-blue-950 focus:bg-white focus:ring-2 focus:ring-blue-100"
+                      />
+                    </div>
 
-                        <td className="p-2">
-                          <div className="flex items-center gap-1">
-                            <Eye className="h-4 w-4 text-muted-foreground" />
-                            {product.views || 0}
-                          </div>
-                        </td>
+                    <div className="space-y-2 md:col-span-2">
+                      <label className="text-sm font-semibold text-slate-700">
+                        Descripción
+                      </label>
 
-                        <td className="p-2">
-                          <div className="flex items-center gap-1">
-                            <Heart className="h-4 w-4 text-muted-foreground" />
-                            {product.favoriteCount || 0}
-                          </div>
-                        </td>
+                      <textarea
+                        value={description}
+                        onChange={(event) => setDescription(event.target.value)}
+                        placeholder="Describe el estado, tiempo de uso, accesorios incluidos, detalles importantes y condiciones de entrega..."
+                        className="min-h-32 w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none transition focus:border-blue-950 focus:bg-white focus:ring-2 focus:ring-blue-100"
+                      />
+                    </div>
 
-                        <td className="p-2">
-                          <Badge variant={getStatusVariant(product.status) as any}>
-                            {getStatusLabel(product.status)}
-                          </Badge>
-                        </td>
+                    <div className="space-y-2">
+                      <label className="text-sm font-semibold text-slate-700">
+                        Precio
+                      </label>
 
-                        <td className="relative p-2">
-                          <Button
-                            type="button"
-                            size="icon"
-                            variant="ghost"
-                            onClick={() =>
-                              setOpenActionsId(
-                                openActionsId === product.id ? null : product.id
-                              )
-                            }
-                          >
-                            <MoreVertical className="h-4 w-4" />
-                          </Button>
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={price}
+                        onChange={(event) => setPrice(event.target.value)}
+                        placeholder="Ejemplo: 950"
+                        className="h-12 w-full rounded-xl border border-slate-200 bg-slate-50 px-4 text-sm outline-none transition focus:border-blue-950 focus:bg-white focus:ring-2 focus:ring-blue-100"
+                      />
+                    </div>
 
-                          {openActionsId === product.id && (
-                            <div className="absolute right-2 top-10 z-20 w-52 overflow-hidden rounded-xl border bg-white shadow-lg">
-                              <button
-                                type="button"
-                                onClick={() => fillFormForEdit(product)}
-                                className="flex w-full items-center gap-2 px-4 py-3 text-left text-sm hover:bg-slate-100"
-                              >
-                                <Edit3 className="h-4 w-4 text-blue-600" />
-                                Editar
-                              </button>
+                    <div className="space-y-2">
+                      <label className="text-sm font-semibold text-slate-700">
+                        Ciudad
+                      </label>
 
-                              <button
-                                type="button"
-                                onClick={() => handleMarkAsSold(product.id)}
-                                className="flex w-full items-center gap-2 px-4 py-3 text-left text-sm hover:bg-slate-100"
-                              >
-                                <BadgeCheck className="h-4 w-4 text-green-600" />
-                                Marcar como vendido
-                              </button>
+                      <input
+                        value={city}
+                        onChange={(event) => setCity(event.target.value)}
+                        placeholder="Ejemplo: Lima"
+                        className="h-12 w-full rounded-xl border border-slate-200 bg-slate-50 px-4 text-sm outline-none transition focus:border-blue-950 focus:bg-white focus:ring-2 focus:ring-blue-100"
+                      />
+                    </div>
 
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setDeleteProduct(product);
-                                  setOpenActionsId(null);
-                                }}
-                                className="flex w-full items-center gap-2 px-4 py-3 text-left text-sm text-red-600 hover:bg-red-50"
-                              >
-                                <Trash2 className="h-4 w-4" />
-                                Eliminar
-                              </button>
-                            </div>
-                          )}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            ) : (
-              <div className="py-12 text-center">
-                <ShoppingBag className="mx-auto mb-4 h-12 w-12 text-muted-foreground" />
-                <p className="mb-4 text-muted-foreground">
-                  Aún no has publicado productos.
-                </p>
+                    <div className="space-y-2">
+                      <label className="text-sm font-semibold text-slate-700">
+                        Categoría
+                      </label>
 
-                <Button type="button" onClick={openPublishForm}>
-                  Publicar primer producto
-                </Button>
-              </div>
-            )}
-          </CardContent>
-        </Card>
+                      <select
+                        value={category}
+                        onChange={(event) => setCategory(event.target.value)}
+                        className="h-12 w-full rounded-xl border border-slate-200 bg-slate-50 px-4 text-sm outline-none transition focus:border-blue-950 focus:bg-white focus:ring-2 focus:ring-blue-100"
+                      >
+                        {CATEGORIES.map((item) => (
+                          <option key={item} value={item}>
+                            {item}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
 
-        <Card>
-          <CardHeader>
-            <CardTitle>Órdenes recientes</CardTitle>
-            <CardDescription>Tus últimas ventas registradas.</CardDescription>
-          </CardHeader>
+                    <div className="space-y-2">
+                      <label className="text-sm font-semibold text-slate-700">
+                        Estado físico
+                      </label>
 
-          <CardContent>
-            {sellerOrders.length > 0 ? (
-              <div className="space-y-4">
-                {sellerOrders.map((order) => {
-                  return (
-                    <div
-                      key={order.id}
-                      className="flex items-center justify-between rounded-lg border p-4"
+                      <select
+                        value={condition}
+                        onChange={(event) => setCondition(event.target.value)}
+                        className="h-12 w-full rounded-xl border border-slate-200 bg-slate-50 px-4 text-sm outline-none transition focus:border-blue-950 focus:bg-white focus:ring-2 focus:ring-blue-100"
+                      >
+                        {CONDITIONS.map((item) => (
+                          <option key={item} value={item}>
+                            {item}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div className="space-y-2 md:col-span-2">
+                      <label className="text-sm font-semibold text-slate-700">
+                        Foto del producto
+                      </label>
+
+                      <label className="flex cursor-pointer flex-col items-center justify-center rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-8 text-center transition hover:border-blue-300 hover:bg-blue-50">
+                        {isUploadingImage ? (
+                          <Loader2 className="mb-3 h-8 w-8 animate-spin text-blue-950" />
+                        ) : (
+                          <Upload className="mb-3 h-8 w-8 text-blue-950" />
+                        )}
+
+                        <span className="font-semibold text-slate-950">
+                          {isUploadingImage
+                            ? 'Subiendo imagen...'
+                            : 'Subir imagen'}
+                        </span>
+
+                        <span className="mt-1 text-sm text-slate-500">
+                          JPG, PNG o WEBP hasta 5 MB
+                        </span>
+
+                        <input
+                          type="file"
+                          accept="image/*"
+                          onChange={handleUploadImage}
+                          disabled={isUploadingImage}
+                          className="hidden"
+                        />
+                      </label>
+                    </div>
+
+                    <div className="space-y-2 md:col-span-2">
+                      <label className="text-sm font-semibold text-slate-700">
+                        URL de imagen
+                      </label>
+
+                      <input
+                        value={imageUrl}
+                        onChange={(event) => setImageUrl(event.target.value)}
+                        placeholder="https://..."
+                        className="h-12 w-full rounded-xl border border-slate-200 bg-slate-50 px-4 text-sm outline-none transition focus:border-blue-950 focus:bg-white focus:ring-2 focus:ring-blue-100"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="rounded-3xl border border-blue-100 bg-blue-50/70 p-4 text-sm text-blue-900">
+                    <div className="mb-2 flex items-center gap-2 font-black">
+                      <ShieldCheck className="h-4 w-4" />
+                      Recomendación
+                    </div>
+
+                    <p className="leading-relaxed">
+                      Usa fotos reales, escribe una descripción clara y coloca
+                      un precio competitivo. Eso aumenta la confianza del
+                      comprador.
+                    </p>
+                  </div>
+
+                  <div className="flex flex-col gap-3 sm:flex-row">
+                    <Button
+                      type="submit"
+                      disabled={isSaving || isUploadingImage || !hasPublicContact}
+                      className="h-12 rounded-xl bg-blue-950 px-6 text-base hover:bg-blue-900"
                     >
-                      <div>
-                        <h4 className="font-semibold">Producto vendido</h4>
-                        <p className="text-sm text-muted-foreground">
-                          Orden {order.id} • {order.createdAt}
+                      {isSaving ? (
+                        <>
+                          <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+                          Publicando...
+                        </>
+                      ) : (
+                        <>
+                          <Save className="mr-2 h-5 w-5" />
+                          Publicar producto
+                        </>
+                      )}
+                    </Button>
+
+                    <Link href="/products">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="h-12 rounded-xl bg-white px-6 text-base"
+                      >
+                        Ver publicaciones
+                      </Button>
+                    </Link>
+                  </div>
+                </form>
+              </CardContent>
+            </Card>
+
+            {/* SIDEBAR */}
+            <aside className="space-y-5">
+              <Card className="rounded-[2rem] border-slate-200 bg-white shadow-sm">
+                <CardHeader>
+                  <CardTitle className="text-xl font-black text-slate-950">
+                    Vista previa
+                  </CardTitle>
+
+                  <CardDescription>
+                    Así se verá tu producto en la plataforma.
+                  </CardDescription>
+                </CardHeader>
+
+                <CardContent>
+                  <div className="overflow-hidden rounded-3xl border bg-white">
+                    <div className="relative h-56 bg-slate-100">
+                      <img
+                        src={previewImage}
+                        alt="Vista previa"
+                        className="h-full w-full object-cover"
+                      />
+
+                      <Badge className="absolute left-4 top-4 bg-blue-950 text-white hover:bg-blue-950">
+                        Disponible
+                      </Badge>
+                    </div>
+
+                    <div className="p-5">
+                      <h3 className="line-clamp-1 text-lg font-black text-slate-950">
+                        {title || 'Nombre del producto'}
+                      </h3>
+
+                      <p className="mt-2 line-clamp-2 text-sm text-slate-500">
+                        {description ||
+                          'Agrega una descripción clara para generar confianza.'}
+                      </p>
+
+                      <p className="mt-4 text-3xl font-black text-blue-950">
+                        S/{' '}
+                        {Number(price || 0).toLocaleString('es-PE', {
+                          minimumFractionDigits: 0,
+                          maximumFractionDigits: 2,
+                        })}
+                      </p>
+
+                      <p className="mt-2 flex items-center gap-1 text-sm text-slate-500">
+                        <MapPin className="h-4 w-4" />
+                        {city || sellerCity}
+                      </p>
+
+                      <div className="mt-5 rounded-2xl bg-slate-50 p-4 text-sm">
+                        <p className="mb-2 font-black text-slate-950">
+                          Vendedor
                         </p>
-                      </div>
 
-                      <div className="text-right">
-                        <div className="font-bold">
-                          S/ {order.amount.toLocaleString()}
+                        <div className="space-y-2 text-slate-600">
+                          <p className="flex items-center gap-2">
+                            <User className="h-4 w-4" />
+                            {sellerName}
+                          </p>
+
+                          <p className="flex items-center gap-2">
+                            <Phone className="h-4 w-4" />
+                            {sellerPhone || 'Teléfono pendiente'}
+                          </p>
+
+                          <p className="flex items-center gap-2 break-all">
+                            <Mail className="h-4 w-4 flex-shrink-0" />
+                            {sellerEmail || 'Correo pendiente'}
+                          </p>
                         </div>
-
-                        <Badge
-                          variant={
-                            order.status === 'completed'
-                              ? 'default'
-                              : 'secondary'
-                          }
-                        >
-                          {order.status === 'completed'
-                            ? 'Completada'
-                            : order.status === 'pending'
-                              ? 'Pendiente'
-                              : 'Cancelada'}
-                        </Badge>
                       </div>
                     </div>
-                  );
-                })}
-              </div>
-            ) : (
-              <p className="py-8 text-center text-muted-foreground">
-                Aún no tienes órdenes.
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card className="rounded-[2rem] border-slate-200 bg-white shadow-sm">
+                <CardHeader>
+                  <CardTitle className="text-xl font-black text-slate-950">
+                    Consejos para vender mejor
+                  </CardTitle>
+                </CardHeader>
+
+                <CardContent className="space-y-3">
+                  <div className="flex gap-3 rounded-2xl bg-slate-50 p-4">
+                    <ImagePlus className="mt-0.5 h-5 w-5 flex-shrink-0 text-blue-950" />
+                    <p className="text-sm text-slate-600">
+                      Usa una foto limpia, bien iluminada y sin fondos
+                      distractores.
+                    </p>
+                  </div>
+
+                  <div className="flex gap-3 rounded-2xl bg-slate-50 p-4">
+                    <Sparkles className="mt-0.5 h-5 w-5 flex-shrink-0 text-orange-600" />
+                    <p className="text-sm text-slate-600">
+                      Describe detalles reales: estado, tiempo de uso, accesorios
+                      y motivo de venta.
+                    </p>
+                  </div>
+
+                  <div className="flex gap-3 rounded-2xl bg-slate-50 p-4">
+                    <CheckCircle className="mt-0.5 h-5 w-5 flex-shrink-0 text-green-700" />
+                    <p className="text-sm text-slate-600">
+                      Coloca un precio competitivo para recibir más consultas.
+                    </p>
+                  </div>
+                </CardContent>
+              </Card>
+            </aside>
+          </div>
+        )}
+
+        {/* MIS PRODUCTOS */}
+        <section className="mt-8">
+          <div className="mb-5 flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
+            <div>
+              <h2 className="text-2xl font-black text-slate-950 md:text-3xl">
+                Mis publicaciones
+              </h2>
+
+              <p className="text-sm text-slate-500">
+                Administra los productos que tienes publicados.
               </p>
-            )}
-          </CardContent>
-        </Card>
-      </div>
+            </div>
 
-      {deleteProduct && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
-          <Card className="w-full max-w-md">
-            <CardHeader>
-              <CardTitle>Eliminar producto</CardTitle>
-              <CardDescription>
-                Esta acción eliminará el producto de Supabase.
-              </CardDescription>
-            </CardHeader>
+            <Link href="/profile">
+              <Button variant="outline" className="rounded-xl bg-white">
+                Editar datos de vendedor
+              </Button>
+            </Link>
+          </div>
 
-            <CardContent className="space-y-4">
-              <div className="rounded-xl border bg-slate-50 p-4">
-                <p className="font-semibold">{deleteProduct.title}</p>
-                <p className="text-sm text-muted-foreground">
-                  S/ {Number(deleteProduct.price || 0).toLocaleString()}
+          {sortedProducts.length > 0 ? (
+            <div className="grid gap-5 md:grid-cols-2 lg:grid-cols-3">
+              {sortedProducts.map((product) => {
+                const image = getProductImage(product);
+
+                return (
+                  <Card
+                    key={product.id}
+                    className="overflow-hidden rounded-3xl border-slate-200 bg-white shadow-sm transition hover:-translate-y-1 hover:shadow-lg"
+                  >
+                    <div className="relative h-52 bg-slate-100">
+                      <img
+                        src={image}
+                        alt={getProductTitle(product)}
+                        className="h-full w-full object-cover"
+                      />
+
+                      <Badge
+                        className={`absolute left-4 top-4 ${getStatusClass(
+                          product.status
+                        )}`}
+                      >
+                        {getStatusLabel(product.status)}
+                      </Badge>
+                    </div>
+
+                    <CardContent className="p-5">
+                      <h3 className="line-clamp-1 text-lg font-black text-slate-950">
+                        {getProductTitle(product)}
+                      </h3>
+
+                      <p className="mt-2 line-clamp-2 text-sm text-slate-500">
+                        {product.description ||
+                          'Producto publicado en La Segunda Market.'}
+                      </p>
+
+                      <p className="mt-4 text-2xl font-black text-blue-950">
+                        S/{' '}
+                        {getProductPrice(product).toLocaleString('es-PE', {
+                          minimumFractionDigits: 0,
+                          maximumFractionDigits: 2,
+                        })}
+                      </p>
+
+                      <div className="mt-3 flex flex-wrap items-center gap-3 text-sm text-slate-500">
+                        <span className="inline-flex items-center gap-1">
+                          <MapPin className="h-4 w-4" />
+                          {product.city || 'Perú'}
+                        </span>
+
+                        <span className="inline-flex items-center gap-1">
+                          <Eye className="h-4 w-4" />
+                          {getProductViews(product)}
+                        </span>
+
+                        <span>{formatDate(product.created_at || product.createdAt)}</span>
+                      </div>
+
+                      <div className="mt-5 grid grid-cols-[1fr_auto] gap-2">
+                        <Link href={`/product/${product.id}`}>
+                          <Button className="w-full rounded-xl bg-blue-950 hover:bg-blue-900">
+                            Ver producto
+                          </Button>
+                        </Link>
+
+                        <Button
+                          variant="outline"
+                          disabled={isDeletingProductId === product.id}
+                          className="rounded-xl bg-white px-3 text-red-600 hover:text-red-700"
+                          onClick={() => handleDeleteProduct(product.id)}
+                        >
+                          {isDeletingProductId === product.id ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          ) : (
+                            <Trash2 className="h-4 w-4" />
+                          )}
+                        </Button>
+                      </div>
+                    </CardContent>
+                  </Card>
+                );
+              })}
+            </div>
+          ) : (
+            <Card className="rounded-[2rem] border-slate-200 bg-white shadow-sm">
+              <CardContent className="p-10 text-center">
+                <div className="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-3xl bg-slate-100 text-slate-500">
+                  <PackagePlus className="h-8 w-8" />
+                </div>
+
+                <h3 className="mb-2 text-2xl font-black text-slate-950">
+                  Aún no tienes publicaciones
+                </h3>
+
+                <p className="mx-auto mb-6 max-w-md text-slate-500">
+                  Publica tu primer producto para empezar a recibir consultas de
+                  compradores interesados.
                 </p>
-              </div>
 
-              <div className="flex flex-col gap-3 sm:flex-row">
-                <Button
-                  className="w-full bg-red-600 hover:bg-red-700"
-                  onClick={handleDeleteProduct}
-                >
-                  <Trash2 className="mr-2 h-4 w-4" />
-                  Sí, eliminar
-                </Button>
-
-                <Button
-                  variant="outline"
-                  className="w-full"
-                  onClick={() => setDeleteProduct(null)}
-                >
-                  Cancelar
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-      )}
+                <a href="#publicar">
+                  <Button className="rounded-xl bg-blue-950 hover:bg-blue-900">
+                    Crear mi primera publicación
+                  </Button>
+                </a>
+              </CardContent>
+            </Card>
+          )}
+        </section>
+      </main>
     </div>
   );
 }
