@@ -1,0 +1,64 @@
+{
+  "name": "La Segunda Market",
+  "short_name": "La Segunda",
+  "description": "Compra y vende productos de segunda mano en Perú. Publica artículos, encuentra oportunidades y contacta directamente con vendedores.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#f7f8fb",
+  "theme_color": "#172554",
+  "orientation": "portrait-primary",
+  "lang": "es-PE",
+  "dir": "ltr",
+  "categories": [
+    "shopping",
+    "marketplace",
+    "business"
+  ],
+  "icons": [
+    {
+      "src": "/favicon.ico",
+      "sizes": "48x48",
+      "type": "image/x-icon",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Ver productos",
+      "short_name": "Productos",
+      "description": "Explorar productos publicados en La Segunda Market",
+      "url": "/products",
+      "icons": [
+        {
+          "src": "/icon-192.png",
+          "sizes": "192x192"
+        }
+      ]
+    },
+    {
+      "name": "Publicar producto",
+      "short_name": "Publicar",
+      "description": "Crear una nueva publicación",
+      "url": "/seller/dashboard",
+      "icons": [
+        {
+          "src": "/icon-192.png",
+          "sizes": "192x192"
+        }
+      ]
+    }
+  ]
+}

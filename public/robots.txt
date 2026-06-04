@@ -1,0 +1,12 @@
+User-agent: *
+Allow: /
+
+Disallow: /api/
+Disallow: /profile
+Disallow: /seller/dashboard
+Disallow: /auth/login
+Disallow: /auth/register
+Disallow: /auth/forgot-password
+
+Sitemap: https://lasegundamarket.app/sitemap.xml
+Host: https://lasegundamarket.app
